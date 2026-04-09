@@ -443,17 +443,20 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 
 	// 5. Get leverage from strategy config
 	strategyConfig := at.strategyEngine.GetConfig()
-	btcEthLeverage := strategyConfig.RiskControl.BTCETHMaxLeverage
-	altcoinLeverage := strategyConfig.RiskControl.AltcoinMaxLeverage
-	logger.Infof("📋 [%s] Strategy leverage config: BTC/ETH=%dx, Altcoin=%dx", at.name, btcEthLeverage, altcoinLeverage)
+	maxLeverage := strategyConfig.RiskControl.EffectiveMaxLeverage()
+	logger.Infof("📋 [%s] Strategy leverage config: max %dx", at.name, maxLeverage)
 
 	// 6. Build context
+	now := time.Now().UTC()
+	tradingSession := kernel.GetUSTradingSession(now)
+	logger.Infof("📅 [%s] Trading session: %s", at.name, kernel.TradingSessionLabel(tradingSession))
+
 	ctx := &kernel.Context{
-		CurrentTime:     time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
-		CallCount:       at.callCount,
-		BTCETHLeverage:  btcEthLeverage,
-		AltcoinLeverage: altcoinLeverage,
+		CurrentTime:    now.Format("2006-01-02 15:04:05 UTC"),
+		RuntimeMinutes: int(time.Since(at.startTime).Minutes()),
+		CallCount:      at.callCount,
+		MaxLeverage:    maxLeverage,
+		TradingSession: tradingSession,
 		Account: kernel.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,

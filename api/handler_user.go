@@ -282,10 +282,8 @@ func (s *Server) createDefaultStrategies(userID string, lang string) error {
 			description: locale.conservative.description,
 			isActive:    false,
 			applyConfig: func(c *store.StrategyConfig) {
-				c.RiskControl.BTCETHMaxLeverage = 3
-				c.RiskControl.AltcoinMaxLeverage = 3
-				c.RiskControl.BTCETHMaxPositionValueRatio = 3.0
-				c.RiskControl.AltcoinMaxPositionValueRatio = 0.5
+				c.RiskControl.MaxLeverage = 3
+				c.RiskControl.MaxPositionValueRatio = 0.5
 				c.RiskControl.MinConfidence = 80
 				c.RiskControl.MinRiskRewardRatio = 4.0
 				c.Indicators.Klines.SelectedTimeframes = []string{"15m", "1h", "4h"}
@@ -297,11 +295,10 @@ func (s *Server) createDefaultStrategies(userID string, lang string) error {
 			description: locale.aggressive.description,
 			isActive:    false,
 			applyConfig: func(c *store.StrategyConfig) {
-				c.RiskControl.BTCETHMaxLeverage = 10
-				c.RiskControl.AltcoinMaxLeverage = 7
-				c.RiskControl.MaxPositions = 5
-				c.RiskControl.AltcoinMaxPositionValueRatio = 2.0
-				c.RiskControl.MinConfidence = 70
+				c.RiskControl.MaxLeverage = 5
+				c.RiskControl.MaxPositions = 3
+				c.RiskControl.MaxPositionValueRatio = 1.0
+				c.RiskControl.MinConfidence = 75
 				c.CoinSource.AI500Limit = 5
 				c.CoinSource.UseOITop = true
 				c.CoinSource.OITopLimit = 5

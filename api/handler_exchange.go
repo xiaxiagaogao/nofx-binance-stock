@@ -342,17 +342,7 @@ func (s *Server) handleGetSupportedExchanges(c *gin.Context) {
 	// Return static list of supported exchange types
 	// Note: ID is empty for supported exchanges (they are templates, not actual accounts)
 	supportedExchanges := []SafeExchangeConfig{
-		{ExchangeType: "binance", Name: "Binance Futures", Type: "cex"},
-		{ExchangeType: "bybit", Name: "Bybit Futures", Type: "cex"},
-		{ExchangeType: "okx", Name: "OKX Futures", Type: "cex"},
-		{ExchangeType: "gate", Name: "Gate.io Futures", Type: "cex"},
-		{ExchangeType: "kucoin", Name: "KuCoin Futures", Type: "cex"},
-		{ExchangeType: "hyperliquid", Name: "Hyperliquid", Type: "dex"},
-		{ExchangeType: "aster", Name: "Aster DEX", Type: "dex"},
-		{ExchangeType: "lighter", Name: "LIGHTER DEX", Type: "dex"},
-		{ExchangeType: "alpaca", Name: "Alpaca (US Stocks)", Type: "stock"},
-		{ExchangeType: "forex", Name: "Forex (TwelveData)", Type: "forex"},
-		{ExchangeType: "metals", Name: "Metals (TwelveData)", Type: "metals"},
+		{ExchangeType: "binance", Name: "Binance Futures (Stocks & Crypto)", Type: "cex"},
 	}
 
 	c.JSON(http.StatusOK, supportedExchanges)

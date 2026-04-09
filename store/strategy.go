@@ -263,17 +263,18 @@ type RiskControlConfig struct {
 	// Max number of coins held simultaneously (CODE ENFORCED)
 	MaxPositions int `json:"max_positions"`
 
-	// BTC/ETH exchange leverage for opening positions (AI guided)
-	BTCETHMaxLeverage int `json:"btc_eth_max_leverage"`
-	// Altcoin exchange leverage for opening positions (AI guided)
-	AltcoinMaxLeverage int `json:"altcoin_max_leverage"`
+	// Unified max leverage for all assets (AI guided)
+	MaxLeverage int `json:"max_leverage"`
+	// Unified single position max value = equity × this ratio (CODE ENFORCED)
+	MaxPositionValueRatio float64 `json:"max_position_value_ratio"`
 
-	// BTC/ETH single position max value = equity × this ratio (CODE ENFORCED, default: 5)
-	BTCETHMaxPositionValueRatio float64 `json:"btc_eth_max_position_value_ratio"`
-	// Altcoin single position max value = equity × this ratio (CODE ENFORCED, default: 1)
-	AltcoinMaxPositionValueRatio float64 `json:"altcoin_max_position_value_ratio"`
+	// Deprecated: kept for backward compatibility with existing strategy configs
+	BTCETHMaxLeverage            int     `json:"btc_eth_max_leverage,omitempty"`
+	AltcoinMaxLeverage           int     `json:"altcoin_max_leverage,omitempty"`
+	BTCETHMaxPositionValueRatio  float64 `json:"btc_eth_max_position_value_ratio,omitempty"`
+	AltcoinMaxPositionValueRatio float64 `json:"altcoin_max_position_value_ratio,omitempty"`
 
-	// Max margin utilization (e.g. 0.9 = 90%) (CODE ENFORCED)
+	// Max margin utilization (e.g. 0.6 = 60%) (CODE ENFORCED)
 	MaxMarginUsage float64 `json:"max_margin_usage"`
 	// Min position size in USDT (CODE ENFORCED)
 	MinPositionSize float64 `json:"min_position_size"`
@@ -282,6 +283,36 @@ type RiskControlConfig struct {
 	MinRiskRewardRatio float64 `json:"min_risk_reward_ratio"`
 	// Min AI confidence to open position (AI guided)
 	MinConfidence int `json:"min_confidence"`
+}
+
+// EffectiveMaxLeverage returns the effective max leverage, handling backward compatibility
+func (r RiskControlConfig) EffectiveMaxLeverage() int {
+	if r.MaxLeverage > 0 {
+		return r.MaxLeverage
+	}
+	// Backward compat: use the higher of the two old fields
+	if r.BTCETHMaxLeverage > r.AltcoinMaxLeverage {
+		return r.BTCETHMaxLeverage
+	}
+	if r.AltcoinMaxLeverage > 0 {
+		return r.AltcoinMaxLeverage
+	}
+	return 5 // default
+}
+
+// EffectiveMaxPositionValueRatio returns the effective position value ratio, handling backward compatibility
+func (r RiskControlConfig) EffectiveMaxPositionValueRatio() float64 {
+	if r.MaxPositionValueRatio > 0 {
+		return r.MaxPositionValueRatio
+	}
+	// Backward compat: use the higher of the two old fields
+	if r.BTCETHMaxPositionValueRatio > r.AltcoinMaxPositionValueRatio {
+		return r.BTCETHMaxPositionValueRatio
+	}
+	if r.AltcoinMaxPositionValueRatio > 0 {
+		return r.AltcoinMaxPositionValueRatio
+	}
+	return 2.0 // default for stock trading (conservative)
 }
 
 // NewStrategyStore creates a new StrategyStore
@@ -310,73 +341,60 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 	config := StrategyConfig{
 		Language: normalizedLang,
 		CoinSource: CoinSourceConfig{
-			SourceType: "ai500",
-			UseAI500:   true,
-			AI500Limit: 3,
-			UseOITop:   false,
-			OITopLimit: 3,
-			UseOILow:   false,
-			OILowLimit: 3,
+			SourceType:  "static",
+			StaticCoins: []string{"TSLAUSDT", "NVDAUSDT", "XAUUSDT", "QQQUSDT", "SPYUSDT"},
+			UseAI500:    false,
+			UseOITop:    false,
+			UseOILow:    false,
 		},
 		Indicators: IndicatorConfig{
 			Klines: KlineConfig{
-				PrimaryTimeframe:     "5m",
-				PrimaryCount:         20,
+				PrimaryTimeframe:     "1h",
+				PrimaryCount:         30,
 				LongerTimeframe:      "4h",
-				LongerCount:          10,
+				LongerCount:          20,
 				EnableMultiTimeframe: true,
-				SelectedTimeframes:   []string{"5m", "15m", "1h"},
+				SelectedTimeframes:   []string{"1h", "4h", "1d"},
 			},
-			EnableRawKlines:   true, // Required - raw OHLCV data for AI analysis
-			EnableEMA:         false,
+			EnableRawKlines:   true,  // Required - raw OHLCV data for AI analysis
+			EnableEMA:         true,  // EMA for trend analysis
 			EnableMACD:        false,
-			EnableRSI:         false,
+			EnableRSI:         true,  // RSI for overbought/oversold
 			EnableATR:         false,
-			EnableBOLL:        false,
+			EnableBOLL:        true,  // Bollinger Bands for volatility
 			EnableVolume:      true,
-			EnableOI:          true,
-			EnableFundingRate: true,
-			EMAPeriods:        []int{20, 50},
-			RSIPeriods:        []int{7, 14},
+			EnableOI:          false, // Not meaningful for tokenized stocks
+			EnableFundingRate: false, // Not meaningful for tokenized stocks
+			EMAPeriods:        []int{21, 55},
+			RSIPeriods:        []int{14},
 			ATRPeriods:        []int{14},
 			BOLLPeriods:       []int{20},
 			// NofxOS unified API key
 			NofxOSAPIKey: "cm_568c67eae410d912c54c",
-			// Quant data
-			EnableQuantData:    true,
-			EnableQuantOI:      true,
-			EnableQuantNetflow: true,
-			// OI ranking data
-			EnableOIRanking:   true,
-			OIRankingDuration: "1h",
-			OIRankingLimit:    10,
-			// NetFlow ranking data
-			EnableNetFlowRanking:   true,
-			NetFlowRankingDuration: "1h",
-			NetFlowRankingLimit:    10,
-			// Price ranking data
-			EnablePriceRanking:   true,
-			PriceRankingDuration: "1h,4h,24h",
-			PriceRankingLimit:    10,
+			// Crypto-specific quant data disabled by default for stock trading
+			EnableQuantData:      false,
+			EnableQuantOI:        false,
+			EnableQuantNetflow:   false,
+			EnableOIRanking:      false,
+			EnableNetFlowRanking: false,
+			EnablePriceRanking:   false,
 		},
 		RiskControl: RiskControlConfig{
-			MaxPositions:                 3,   // Max 3 coins simultaneously (CODE ENFORCED)
-			BTCETHMaxLeverage:            5,   // BTC/ETH exchange leverage (AI guided)
-			AltcoinMaxLeverage:           5,   // Altcoin exchange leverage (AI guided)
-			BTCETHMaxPositionValueRatio:  5.0, // BTC/ETH: max position = 5x equity (CODE ENFORCED)
-			AltcoinMaxPositionValueRatio: 1.0, // Altcoin: max position = 1x equity (CODE ENFORCED)
-			MaxMarginUsage:               0.9, // Max 90% margin usage (CODE ENFORCED)
-			MinPositionSize:              12,  // Min 12 USDT per position (CODE ENFORCED)
-			MinRiskRewardRatio:           3.0, // Min 3:1 profit/loss ratio (AI guided)
-			MinConfidence:                75,  // Min 75% confidence (AI guided)
+			MaxPositions:          2,    // Max 2 positions simultaneously (CODE ENFORCED)
+			MaxLeverage:           5,    // Max 5x leverage for all assets (AI guided)
+			MaxPositionValueRatio: 0.5,  // Max position = 0.5x equity (CODE ENFORCED, conservative for stocks)
+			MaxMarginUsage:        0.6,  // Max 60% margin usage (CODE ENFORCED)
+			MinPositionSize:       12,   // Min 12 USDT per position (CODE ENFORCED)
+			MinRiskRewardRatio:    2.0,  // Min 2:1 profit/loss ratio (AI guided)
+			MinConfidence:         80,   // Min 80% confidence (AI guided)
 		},
 	}
 
 	if lang == "zh" {
 		config.PromptSections = PromptSectionsConfig{
-			RoleDefinition: `# 你是一个专业的加密货币交易AI
+			RoleDefinition: `# 你是一个专业的量化交易AI
 
-你的任务是根据提供的市场数据做出交易决策。你是一个经验丰富的量化交易员，擅长技术分析和风险管理。`,
+你的任务是根据提供的市场数据做出交易决策。你交易的标的是 Binance 上的代币化股票和优质资产（如美股七姐妹、QQQ、SPY、XAU 等）。你是一个经验丰富的量化交易员，擅长技术分析和风险管理。`,
 			TradingFrequency: `# ⏱️ 交易频率意识
 
 - 优秀交易员：每天2-4笔 ≈ 每小时0.1-0.2笔
@@ -394,9 +412,9 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 		}
 	} else {
 		config.PromptSections = PromptSectionsConfig{
-			RoleDefinition: `# You are a professional cryptocurrency trading AI
+			RoleDefinition: `# You are a professional quantitative trading AI
 
-Your task is to make trading decisions based on the provided market data. You are an experienced quantitative trader skilled in technical analysis and risk management.`,
+Your task is to make trading decisions on tokenized stocks and quality assets (e.g. US tech giants, QQQ, SPY, XAU) on Binance. You are an experienced quantitative trader skilled in technical analysis and risk management.`,
 			TradingFrequency: `# ⏱️ Trading Frequency Awareness
 
 - Excellent trader: 2-4 trades per day ≈ 0.1-0.2 trades per hour

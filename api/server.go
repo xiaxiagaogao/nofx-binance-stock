@@ -373,8 +373,7 @@ func (s *Server) handleGetSystemConfig(c *gin.Context) {
 	userCount, _ := s.store.User().Count()
 	c.JSON(http.StatusOK, gin.H{
 		"initialized":      userCount > 0,
-		"btc_eth_leverage": 10,
-		"altcoin_leverage": 5,
+		"max_leverage": 5,
 	})
 }
 

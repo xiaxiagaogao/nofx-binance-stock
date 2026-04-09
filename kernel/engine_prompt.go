@@ -31,8 +31,8 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString(promptSections.RoleDefinition)
 		sb.WriteString("\n\n")
 	} else {
-		sb.WriteString("# You are a professional cryptocurrency trading AI\n\n")
-		sb.WriteString("Your task is to make trading decisions based on provided market data.\n\n")
+		sb.WriteString("# You are a professional quantitative trading AI\n\n")
+		sb.WriteString("Your task is to make trading decisions based on provided market data. You trade tokenized stocks and quality assets on Binance.\n\n")
 	}
 
 	// 2. Trading mode variant
@@ -46,40 +46,32 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	}
 
 	// 3. Hard constraints (risk control)
-	btcEthPosValueRatio := riskControl.BTCETHMaxPositionValueRatio
-	if btcEthPosValueRatio <= 0 {
-		btcEthPosValueRatio = 5.0
-	}
-	altcoinPosValueRatio := riskControl.AltcoinMaxPositionValueRatio
-	if altcoinPosValueRatio <= 0 {
-		altcoinPosValueRatio = 1.0
-	}
+	maxLeverage := riskControl.EffectiveMaxLeverage()
+	maxPosRatio := riskControl.EffectiveMaxPositionValueRatio()
+	maxPositionValue := accountEquity * maxPosRatio
 
 	sb.WriteString("# Hard Constraints (Risk Control)\n\n")
 	sb.WriteString("## CODE ENFORCED (Backend validation, cannot be bypassed):\n")
-	sb.WriteString(fmt.Sprintf("- Max Positions: %d coins simultaneously\n", riskControl.MaxPositions))
-	sb.WriteString(fmt.Sprintf("- Position Value Limit (Altcoins): max %.0f USDT (= equity %.0f × %.1fx)\n",
-		accountEquity*altcoinPosValueRatio, accountEquity, altcoinPosValueRatio))
-	sb.WriteString(fmt.Sprintf("- Position Value Limit (BTC/ETH): max %.0f USDT (= equity %.0f × %.1fx)\n",
-		accountEquity*btcEthPosValueRatio, accountEquity, btcEthPosValueRatio))
+	sb.WriteString(fmt.Sprintf("- Max Positions: %d simultaneously\n", riskControl.MaxPositions))
+	sb.WriteString(fmt.Sprintf("- Position Value Limit: max %.0f USDT (= equity %.0f × %.1fx)\n",
+		maxPositionValue, accountEquity, maxPosRatio))
 	sb.WriteString(fmt.Sprintf("- Max Margin Usage: ≤%.0f%%\n", riskControl.MaxMarginUsage*100))
 	sb.WriteString(fmt.Sprintf("- Min Position Size: ≥%.0f USDT\n\n", riskControl.MinPositionSize))
 
 	sb.WriteString("## AI GUIDED (Recommended, you should follow):\n")
-	sb.WriteString(fmt.Sprintf("- Trading Leverage: Altcoins max %dx | BTC/ETH max %dx\n",
-		riskControl.AltcoinMaxLeverage, riskControl.BTCETHMaxLeverage))
+	sb.WriteString(fmt.Sprintf("- Max Trading Leverage: %dx\n", maxLeverage))
 	sb.WriteString(fmt.Sprintf("- Risk-Reward Ratio: ≥1:%.1f (take_profit / stop_loss)\n", riskControl.MinRiskRewardRatio))
 	sb.WriteString(fmt.Sprintf("- Min Confidence: ≥%d to open position\n\n", riskControl.MinConfidence))
 
 	// Position sizing guidance
 	sb.WriteString("## Position Sizing Guidance\n")
-	sb.WriteString("Calculate `position_size_usd` based on your confidence and the Position Value Limits above:\n")
+	sb.WriteString("Calculate `position_size_usd` based on your confidence and the Position Value Limit above:\n")
 	sb.WriteString("- High confidence (≥85): Use 80-100%% of max position value limit\n")
 	sb.WriteString("- Medium confidence (70-84): Use 50-80%% of max position value limit\n")
 	sb.WriteString("- Low confidence (60-69): Use 30-50%% of max position value limit\n")
-	sb.WriteString(fmt.Sprintf("- Example: With equity %.0f and BTC/ETH ratio %.1fx, max is %.0f USDT\n",
-		accountEquity, btcEthPosValueRatio, accountEquity*btcEthPosValueRatio))
-	sb.WriteString("- **DO NOT** just use available_balance as position_size_usd. Use the Position Value Limits!\n\n")
+	sb.WriteString(fmt.Sprintf("- Example: With equity %.0f and ratio %.1fx, max is %.0f USDT\n",
+		accountEquity, maxPosRatio, maxPositionValue))
+	sb.WriteString("- **DO NOT** just use available_balance as position_size_usd. Use the Position Value Limit!\n\n")
 
 	// 4. Trading frequency (editable)
 	if promptSections.TradingFrequency != "" {
@@ -128,11 +120,10 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("<decision>\n")
 	sb.WriteString("Step 2: JSON decision array\n\n")
 	sb.WriteString("```json\n[\n")
-	// Use the actual configured position value ratio for BTC/ETH in the example
-	examplePositionSize := accountEquity * btcEthPosValueRatio
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300},\n",
-		riskControl.BTCETHMaxLeverage, examplePositionSize))
-	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\"}\n")
+	examplePositionSize := maxPositionValue
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"TSLAUSDT\", \"action\": \"open_long\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 240.0, \"take_profit\": 280.0, \"confidence\": 85, \"risk_usd\": 50},\n",
+		maxLeverage, examplePositionSize))
+	sb.WriteString("  {\"symbol\": \"XAUUSDT\", \"action\": \"close_long\"}\n")
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
 	sb.WriteString("## Field Description\n\n")
@@ -211,8 +202,8 @@ func (e *StrategyEngine) writeAvailableIndicators(sb *strings.Builder) {
 		sb.WriteString("- Funding rate\n")
 	}
 
-	if len(e.config.CoinSource.StaticCoins) > 0 || e.config.CoinSource.UseAI500 || e.config.CoinSource.UseOITop {
-		sb.WriteString("- AI500 / OI_Top filter tags (if available)\n")
+	if len(e.config.CoinSource.StaticCoins) > 0 {
+		sb.WriteString("- Static asset watchlist\n")
 	}
 
 	if indicators.EnableQuantData {
@@ -228,15 +219,31 @@ func (e *StrategyEngine) writeAvailableIndicators(sb *strings.Builder) {
 func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	var sb strings.Builder
 
-	// System status
-	sb.WriteString(fmt.Sprintf("Time: %s | Period: #%d | Runtime: %d minutes\n\n",
-		ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
+	// System status + trading session
+	lang := e.GetLanguage()
+	sessionLabel := TradingSessionLabel(ctx.TradingSession)
+	if lang == LangChinese {
+		sessionLabel = TradingSessionLabelZh(ctx.TradingSession)
+	}
+	sb.WriteString(fmt.Sprintf("Time: %s | Period: #%d | Runtime: %d minutes | Session: %s\n",
+		ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes, sessionLabel))
 
-	// BTC market
-	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
-		sb.WriteString(fmt.Sprintf("BTC: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
-			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
-			btcData.CurrentMACD, btcData.CurrentRSI7))
+	// Trading session guidance
+	switch ctx.TradingSession {
+	case "us_pre_market":
+		sb.WriteString("⚠️ Pre-market session: Lower liquidity, wider spreads. Reduce position sizes and be cautious with new entries.\n")
+	case "us_after_hours":
+		sb.WriteString("⚠️ After-hours session: Low liquidity. Prefer position management over new entries. Avoid aggressive trades.\n")
+	case "us_market_closed":
+		sb.WriteString("⚠️ Market closed: Tokenized stocks may still trade but with minimal price discovery. Strongly prefer hold/wait.\n")
+	}
+	sb.WriteString("\n")
+
+	// Market reference (SPY as broad market indicator)
+	if spyData, hasSPY := ctx.MarketDataMap["SPYUSDT"]; hasSPY {
+		sb.WriteString(fmt.Sprintf("SPY: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | RSI: %.2f\n\n",
+			spyData.CurrentPrice, spyData.PriceChange1h, spyData.PriceChange4h,
+			spyData.CurrentRSI7))
 	}
 
 	// Account information

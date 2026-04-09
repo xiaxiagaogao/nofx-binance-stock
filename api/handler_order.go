@@ -93,8 +93,8 @@ func (s *Server) handleGetTraderConfig(c *gin.Context) {
 		"strategy_id":           traderConfig.StrategyID,
 		"initial_balance":       traderConfig.InitialBalance,
 		"scan_interval_minutes": traderConfig.ScanIntervalMinutes,
-		"btc_eth_leverage":      traderConfig.BTCETHLeverage,
-		"altcoin_leverage":      traderConfig.AltcoinLeverage,
+		"btc_eth_leverage":      traderConfig.BTCETHLeverage,  // deprecated, kept for compat
+		"altcoin_leverage":      traderConfig.AltcoinLeverage, // deprecated, kept for compat
 		"trading_symbols":       traderConfig.TradingSymbols,
 		"custom_prompt":         traderConfig.CustomPrompt,
 		"override_base_prompt":  traderConfig.OverrideBasePrompt,

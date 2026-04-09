@@ -165,20 +165,22 @@ export interface ExternalDataSource {
 }
 
 export interface RiskControlConfig {
-  // Max number of coins held simultaneously (CODE ENFORCED)
+  // Max number of positions held simultaneously (CODE ENFORCED)
   max_positions: number;
 
-  // Trading Leverage - exchange leverage for opening positions (AI guided)
-  btc_eth_max_leverage: number;    // BTC/ETH max exchange leverage
-  altcoin_max_leverage: number;    // Altcoin max exchange leverage
+  // Unified max leverage for all assets (AI guided)
+  max_leverage?: number;
+  // Unified max position value ratio = equity × this ratio (CODE ENFORCED)
+  max_position_value_ratio?: number;
 
-  // Position Value Ratio - single position notional value / account equity (CODE ENFORCED)
-  // Max position value = equity × this ratio
-  btc_eth_max_position_value_ratio?: number;     // default: 5 (BTC/ETH max position = 5x equity)
-  altcoin_max_position_value_ratio?: number;     // default: 1 (Altcoin max position = 1x equity)
+  // Deprecated: kept for backward compatibility
+  btc_eth_max_leverage?: number;
+  altcoin_max_leverage?: number;
+  btc_eth_max_position_value_ratio?: number;
+  altcoin_max_position_value_ratio?: number;
 
   // Risk Parameters
-  max_margin_usage: number;        // Max margin utilization, e.g. 0.9 = 90% (CODE ENFORCED)
+  max_margin_usage: number;        // Max margin utilization, e.g. 0.6 = 60% (CODE ENFORCED)
   min_position_size: number;       // Min position size in USDT (CODE ENFORCED)
   min_risk_reward_ratio: number;   // Min take_profit / stop_loss ratio (AI guided)
   min_confidence: number;          // Min AI confidence to open position (AI guided)

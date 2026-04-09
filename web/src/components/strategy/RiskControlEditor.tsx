@@ -65,71 +65,40 @@ export function RiskControlEditor({
           </div>
         </div>
 
-        {/* Trading Leverage (Exchange) */}
+        {/* Trading Leverage */}
         <div className="mb-2">
           <p className="text-xs font-medium mb-2" style={{ color: '#F0B90B' }}>
             {ts(riskControl.tradingLeverage, language)}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 gap-4 mb-4">
           <div
             className="p-4 rounded-lg"
             style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
           >
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(riskControl.btcEthLeverage, language)}
+              {language === 'zh' ? '最大杠杆' : 'Max Leverage'}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(riskControl.btcEthLeverageDesc, language)}
+              {language === 'zh' ? '所有资产统一杠杆上限' : 'Unified leverage limit for all assets'}
             </p>
             <div className="flex items-center gap-2">
               <input
                 type="range"
-                value={config.btc_eth_max_leverage ?? 5}
+                value={config.max_leverage ?? config.btc_eth_max_leverage ?? 5}
                 onChange={(e) =>
-                  updateField('btc_eth_max_leverage', parseInt(e.target.value))
+                  updateField('max_leverage', parseInt(e.target.value))
                 }
                 disabled={disabled}
                 min={1}
-                max={20}
+                max={10}
                 className="flex-1 accent-yellow-500"
               />
               <span
                 className="w-12 text-center font-mono"
                 style={{ color: '#F0B90B' }}
               >
-                {config.btc_eth_max_leverage ?? 5}x
-              </span>
-            </div>
-          </div>
-
-          <div
-            className="p-4 rounded-lg"
-            style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
-          >
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(riskControl.altcoinLeverage, language)}
-            </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(riskControl.altcoinLeverageDesc, language)}
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                value={config.altcoin_max_leverage ?? 5}
-                onChange={(e) =>
-                  updateField('altcoin_max_leverage', parseInt(e.target.value))
-                }
-                disabled={disabled}
-                min={1}
-                max={20}
-                className="flex-1 accent-yellow-500"
-              />
-              <span
-                className="w-12 text-center font-mono"
-                style={{ color: '#F0B90B' }}
-              >
-                {config.altcoin_max_leverage ?? 5}x
+                {config.max_leverage ?? config.btc_eth_max_leverage ?? 5}x
               </span>
             </div>
           </div>
@@ -144,67 +113,35 @@ export function RiskControlEditor({
             {ts(riskControl.positionValueRatioDesc, language)}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <div
             className="p-4 rounded-lg"
             style={{ background: '#0B0E11', border: '1px solid #0ECB81' }}
           >
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(riskControl.btcEthPositionValueRatio, language)}
+              {language === 'zh' ? '最大仓位价值比' : 'Max Position Value Ratio'}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(riskControl.btcEthPositionValueRatioDesc, language)}
+              {language === 'zh' ? '单仓位最大价值 = 权益 × 此比率' : 'Single position max value = equity × this ratio'}
             </p>
             <div className="flex items-center gap-2">
               <input
                 type="range"
-                value={config.btc_eth_max_position_value_ratio ?? 5}
+                value={config.max_position_value_ratio ?? config.altcoin_max_position_value_ratio ?? 0.5}
                 onChange={(e) =>
-                  updateField('btc_eth_max_position_value_ratio', parseFloat(e.target.value))
+                  updateField('max_position_value_ratio', parseFloat(e.target.value))
                 }
                 disabled={disabled}
-                min={0.5}
-                max={10}
-                step={0.5}
+                min={0.1}
+                max={3}
+                step={0.1}
                 className="flex-1 accent-green-500"
               />
               <span
                 className="w-12 text-center font-mono"
                 style={{ color: '#0ECB81' }}
               >
-                {config.btc_eth_max_position_value_ratio ?? 5}x
-              </span>
-            </div>
-          </div>
-
-          <div
-            className="p-4 rounded-lg"
-            style={{ background: '#0B0E11', border: '1px solid #0ECB81' }}
-          >
-            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(riskControl.altcoinPositionValueRatio, language)}
-            </label>
-            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(riskControl.altcoinPositionValueRatioDesc, language)}
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                value={config.altcoin_max_position_value_ratio ?? 1}
-                onChange={(e) =>
-                  updateField('altcoin_max_position_value_ratio', parseFloat(e.target.value))
-                }
-                disabled={disabled}
-                min={0.5}
-                max={10}
-                step={0.5}
-                className="flex-1 accent-green-500"
-              />
-              <span
-                className="w-12 text-center font-mono"
-                style={{ color: '#0ECB81' }}
-              >
-                {config.altcoin_max_position_value_ratio ?? 1}x
+                {config.max_position_value_ratio ?? config.altcoin_max_position_value_ratio ?? 0.5}x
               </span>
             </div>
           </div>

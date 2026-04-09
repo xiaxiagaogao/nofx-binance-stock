@@ -9,16 +9,16 @@ import (
 // Decision Validation
 // ============================================================================
 
-func validateDecisions(decisions []Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int, btcEthPosRatio, altcoinPosRatio float64) error {
+func validateDecisions(decisions []Decision, accountEquity float64, maxLeverage int, maxPosRatio float64) error {
 	for i := range decisions {
-		if err := validateDecision(&decisions[i], accountEquity, btcEthLeverage, altcoinLeverage, btcEthPosRatio, altcoinPosRatio); err != nil {
+		if err := validateDecision(&decisions[i], accountEquity, maxLeverage, maxPosRatio); err != nil {
 			return fmt.Errorf("decision #%d validation failed: %w", i+1, err)
 		}
 	}
 	return nil
 }
 
-func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int, btcEthPosRatio, altcoinPosRatio float64) error {
+func validateDecision(d *Decision, accountEquity float64, maxLeverage int, maxPosRatio float64) error {
 	validActions := map[string]bool{
 		"open_long":   true,
 		"open_short":  true,
@@ -33,14 +33,7 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 	}
 
 	if d.Action == "open_long" || d.Action == "open_short" {
-		maxLeverage := altcoinLeverage
-		posRatio := altcoinPosRatio
-		maxPositionValue := accountEquity * posRatio
-		if d.Symbol == "BTCUSDT" || d.Symbol == "ETHUSDT" {
-			maxLeverage = btcEthLeverage
-			posRatio = btcEthPosRatio
-			maxPositionValue = accountEquity * posRatio
-		}
+		maxPositionValue := accountEquity * maxPosRatio
 
 		if d.Leverage <= 0 {
 			return fmt.Errorf("leverage must be greater than 0: %d", d.Leverage)
@@ -55,25 +48,13 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		}
 
 		const minPositionSizeGeneral = 12.0
-		const minPositionSizeBTCETH = 60.0
-
-		if d.Symbol == "BTCUSDT" || d.Symbol == "ETHUSDT" {
-			if d.PositionSizeUSD < minPositionSizeBTCETH {
-				return fmt.Errorf("%s opening amount too small (%.2f USDT), must be ≥%.2f USDT", d.Symbol, d.PositionSizeUSD, minPositionSizeBTCETH)
-			}
-		} else {
-			if d.PositionSizeUSD < minPositionSizeGeneral {
-				return fmt.Errorf("opening amount too small (%.2f USDT), must be ≥%.2f USDT", d.PositionSizeUSD, minPositionSizeGeneral)
-			}
+		if d.PositionSizeUSD < minPositionSizeGeneral {
+			return fmt.Errorf("opening amount too small (%.2f USDT), must be ≥%.2f USDT", d.PositionSizeUSD, minPositionSizeGeneral)
 		}
 
 		tolerance := maxPositionValue * 0.01
 		if d.PositionSizeUSD > maxPositionValue+tolerance {
-			if d.Symbol == "BTCUSDT" || d.Symbol == "ETHUSDT" {
-				return fmt.Errorf("BTC/ETH single coin position value cannot exceed %.0f USDT (%.1fx account equity), actual: %.0f", maxPositionValue, posRatio, d.PositionSizeUSD)
-			} else {
-				return fmt.Errorf("altcoin single coin position value cannot exceed %.0f USDT (%.1fx account equity), actual: %.0f", maxPositionValue, posRatio, d.PositionSizeUSD)
-			}
+			return fmt.Errorf("position value cannot exceed %.0f USDT (%.1fx account equity), actual: %.0f", maxPositionValue, maxPosRatio, d.PositionSizeUSD)
 		}
 		if d.StopLoss <= 0 || d.TakeProfit <= 0 {
 			return fmt.Errorf("stop loss and take profit must be greater than 0")
@@ -111,8 +92,8 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 			}
 		}
 
-		if riskRewardRatio < 3.0 {
-			return fmt.Errorf("risk/reward ratio too low (%.2f:1), must be ≥3.0:1 [risk: %.2f%% reward: %.2f%%] [stop loss: %.2f take profit: %.2f]",
+		if riskRewardRatio < 2.0 {
+			return fmt.Errorf("risk/reward ratio too low (%.2f:1), must be ≥2.0:1 [risk: %.2f%% reward: %.2f%%] [stop loss: %.2f take profit: %.2f]",
 				riskRewardRatio, riskPercent, rewardPercent, d.StopLoss, d.TakeProfit)
 		}
 	}

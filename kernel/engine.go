@@ -106,8 +106,8 @@ type Context struct {
 	OIRankingData      *nofxos.OIRankingData              `json:"-"` // Market-wide OI ranking data
 	NetFlowRankingData *nofxos.NetFlowRankingData         `json:"-"` // Market-wide fund flow ranking data
 	PriceRankingData   *nofxos.PriceRankingData           `json:"-"` // Market-wide price gainers/losers
-	BTCETHLeverage     int                                `json:"-"`
-	AltcoinLeverage    int                                `json:"-"`
+	MaxLeverage        int                                `json:"-"`
+	TradingSession     string                             `json:"-"` // "us_market_open", "us_pre_market", "us_after_hours", "us_market_closed"
 	Timeframes         []string                           `json:"-"`
 }
 
@@ -873,4 +873,80 @@ func detectLanguage(text string) Language {
 		}
 	}
 	return LangEnglish
+}
+
+// ============================================================================
+// Trading Session Detection (US Market Hours)
+// ============================================================================
+
+// GetUSTradingSession returns the current US stock market session based on UTC time.
+// US market hours (Eastern Time):
+//   - Pre-market:  04:00-09:30 ET
+//   - Market open: 09:30-16:00 ET
+//   - After-hours: 16:00-20:00 ET
+//   - Closed:      20:00-04:00 ET
+//
+// We use fixed UTC offsets (ET = UTC-4 for EDT, UTC-5 for EST).
+// For simplicity, we use EDT (UTC-4) as the primary reference since US markets
+// are open most of the year in EDT.
+func GetUSTradingSession(utcNow time.Time) string {
+	// Convert to US Eastern Time (approximate: use America/New_York)
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		// Fallback: use UTC-4 (EDT)
+		loc = time.FixedZone("EDT", -4*3600)
+	}
+	et := utcNow.In(loc)
+	hour := et.Hour()
+	minute := et.Minute()
+	totalMinutes := hour*60 + minute
+
+	// Check if it's a weekend (Saturday=6, Sunday=0)
+	weekday := et.Weekday()
+	if weekday == time.Saturday || weekday == time.Sunday {
+		return "us_market_closed"
+	}
+
+	switch {
+	case totalMinutes >= 4*60 && totalMinutes < 9*60+30:
+		return "us_pre_market"
+	case totalMinutes >= 9*60+30 && totalMinutes < 16*60:
+		return "us_market_open"
+	case totalMinutes >= 16*60 && totalMinutes < 20*60:
+		return "us_after_hours"
+	default:
+		return "us_market_closed"
+	}
+}
+
+// TradingSessionLabel returns a human-readable label for the trading session
+func TradingSessionLabel(session string) string {
+	switch session {
+	case "us_market_open":
+		return "US Market Open (09:30-16:00 ET)"
+	case "us_pre_market":
+		return "US Pre-Market (04:00-09:30 ET)"
+	case "us_after_hours":
+		return "US After-Hours (16:00-20:00 ET)"
+	case "us_market_closed":
+		return "US Market Closed"
+	default:
+		return "Unknown"
+	}
+}
+
+// TradingSessionLabelZh returns Chinese label for the trading session
+func TradingSessionLabelZh(session string) string {
+	switch session {
+	case "us_market_open":
+		return "美股盘中 (09:30-16:00 ET)"
+	case "us_pre_market":
+		return "美股盘前 (04:00-09:30 ET)"
+	case "us_after_hours":
+		return "美股盘后 (16:00-20:00 ET)"
+	case "us_market_closed":
+		return "美股休市"
+	default:
+		return "未知"
+	}
 }
