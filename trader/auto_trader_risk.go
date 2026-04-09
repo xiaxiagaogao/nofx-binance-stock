@@ -3,7 +3,6 @@ package trader
 import (
 	"fmt"
 	"nofx/logger"
-	"strings"
 	"time"
 )
 
