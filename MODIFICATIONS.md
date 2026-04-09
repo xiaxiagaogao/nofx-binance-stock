@@ -94,3 +94,28 @@ AI 知道有队友共同管理账户，不需要独自 all-in 风控：
 - 镜像名：`nofx-backend:symbolfix-test`
 - 构建方式：`docker build -t nofx-backend:symbolfix-test -f docker/Dockerfile.backend .`
 - 替换方式：修改 `docker-compose.yml` 中 `image` 字段，通过 `docker compose up -d` 无痛切换
+
+---
+
+## 七、Build Fix（编译修复）
+
+### `trader/auto_trader_risk.go` — 清理无用 import
+
+**问题**：`auto_trader_risk.go` 导入了 `strings` 包，但在移除 `isBTCETH()` 函数后，这个包已经没有任何地方使用。导致 Go 编译器报错：
+
+```
+trader/auto_trader_risk.go:6:2: "strings" imported and not used
+```
+
+**修复**：从 import 声明中删除 `"strings"`。
+
+```diff
+import (
+    "fmt"
+    "nofx/logger"
+-   "strings"
+    "time"
+)
+```
+
+**影响**：纯 build fix，无任何功能变更，完全向后兼容。
