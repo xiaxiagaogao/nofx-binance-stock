@@ -2,32 +2,23 @@ import { Brain, Landmark, Rocket, Sparkles } from 'lucide-react'
 
 interface BeginnerGuideCardsProps {
   language: string
-  claw402Ready: boolean
+  aiModelReady: boolean
   exchangeReady: boolean
   strategyReady: boolean
   traderReady: boolean
   canCreateTrader: boolean
-  walletAddress?: string | null
-  onQuickSetupClaw402: () => void
   onOpenExchange: () => void
   onOpenStrategy: () => void
   onCreateTrader: () => void
 }
 
-function truncateAddress(address: string) {
-  if (address.length <= 12) return address
-  return `${address.slice(0, 6)}...${address.slice(-4)}`
-}
-
 export function BeginnerGuideCards({
   language,
-  claw402Ready,
+  aiModelReady,
   exchangeReady,
   strategyReady,
   traderReady,
   canCreateTrader,
-  walletAddress,
-  onQuickSetupClaw402,
   onOpenExchange,
   onOpenStrategy,
   onCreateTrader,
@@ -38,27 +29,27 @@ export function BeginnerGuideCards({
     {
       key: 'model',
       icon: Brain,
-      title: isZh ? '1. 极速模型' : '1. Fast AI',
+      title: isZh ? '1. 配置 AI 模型' : '1. Configure AI Model',
       desc: isZh
-        ? '默认就是 Claw402 + DeepSeek。第一次不用挑模型，先跑起来。'
-        : 'Start with Claw402 + DeepSeek. No model picking needed for the first run.',
-      meta: walletAddress
+        ? '前往 AI 模型配置，添加你的 API Key，才能驱动交易决策。'
+        : 'Go to AI Models settings and add your API key to power trading decisions.',
+      meta: aiModelReady
         ? isZh
-          ? `钱包 ${truncateAddress(walletAddress)}`
-          : `Wallet ${truncateAddress(walletAddress)}`
+          ? '已配置 AI 模型'
+          : 'AI model configured'
         : isZh
-          ? 'Base 链 USDC 按次付费'
-          : 'Pay per call with Base USDC',
-      ready: claw402Ready,
-      actionLabel: claw402Ready
+          ? '在设置页面添加模型'
+          : 'Add a model in Settings',
+      ready: aiModelReady,
+      actionLabel: aiModelReady
         ? isZh
           ? '已配置'
           : 'Configured'
         : isZh
-          ? '一键配置'
-          : 'One-click setup',
-      onAction: onQuickSetupClaw402,
-      disabled: claw402Ready,
+          ? '去配置'
+          : 'Go to Settings',
+      onAction: () => { window.location.href = '/settings' },
+      disabled: aiModelReady,
     },
     {
       key: 'exchange',

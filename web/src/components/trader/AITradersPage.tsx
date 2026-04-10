@@ -21,18 +21,13 @@ import { ConfigStatusGrid } from './ConfigStatusGrid'
 import { TradersList } from './TradersList'
 import { BeginnerGuideCards } from './BeginnerGuideCards'
 import {
-  AlertTriangle,
   Bot,
   Plus,
   MessageCircle,
 } from 'lucide-react'
 import { confirmToast } from '../../lib/notify'
 import { toast } from 'sonner'
-import {
-  getBeginnerWalletAddress,
-  getUserMode,
-  setBeginnerWalletAddress as persistBeginnerWalletAddress,
-} from '../../lib/onboarding'
+import { getUserMode } from '../../lib/onboarding'
 import type { Strategy } from '../../types'
 import { ApiError } from '../../lib/httpClient'
 
@@ -58,8 +53,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const [visibleTraderAddresses, setVisibleTraderAddresses] = useState<Set<string>>(new Set())
   const [visibleExchangeAddresses, setVisibleExchangeAddresses] = useState<Set<string>>(new Set())
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [quickSetupLoading, setQuickSetupLoading] = useState(false)
-  const [beginnerWalletAddress, setBeginnerWalletAddress] = useState<string | null>(() => getBeginnerWalletAddress())
   const isBeginnerMode = getUserMode() === 'beginner'
   const getErrorMessage = (error: unknown, fallback: string) => {
     if (error instanceof Error && error.message.trim() !== '') {
@@ -198,52 +191,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       description,
     })
   }
-  const parseBalanceUsdc = (balance?: string) => {
-    if (!balance) return null
-    const parsed = Number.parseFloat(balance)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-  const getClaw402BalanceMessage = (balance: number, blocking: boolean) => {
-    if (language === 'zh') {
-      return blocking
-        ? `当前 Claw402 钱包余额为 ${balance.toFixed(6)} USDC，AI 调用无法执行。请先为这个钱包充值，再重新点击启动。`
-        : `当前 Claw402 钱包余额仅剩 ${balance.toFixed(6)} USDC，虽然还能尝试启动，但很快可能因为 AI 调用费用不足而停止。建议先补一点 USDC。`
-    }
-
-    return blocking
-      ? `Your Claw402 wallet balance is ${balance.toFixed(6)} USDC. AI calls cannot run with zero balance. Please top up this wallet before starting again.`
-      : `Your Claw402 wallet balance is only ${balance.toFixed(6)} USDC. You can still try to start, but AI calls may stop soon due to insufficient funds.`
-  }
-  const getClaw402BalanceIssue = (traderId: string) => {
-    const trader = traders?.find((item) => item.trader_id === traderId)
-    if (!trader) return null
-
-    const model =
-      allModels.find((item) => item.id === trader.ai_model) ||
-      allModels.find((item) => item.provider === trader.ai_model)
-
-    if (!model || model.provider !== 'claw402') return null
-
-    const balance = parseBalanceUsdc(model.balanceUsdc)
-    if (balance === null) return null
-    if (balance <= 0) {
-      return {
-        blocking: true,
-        title: language === 'zh' ? '启动失败' : 'Start failed',
-        description: getClaw402BalanceMessage(balance, true),
-      }
-    }
-    if (balance < 1) {
-      return {
-        blocking: false,
-        title: language === 'zh' ? 'Claw402 余额偏低' : 'Low Claw402 balance',
-        description: getClaw402BalanceMessage(balance, false),
-      }
-    }
-
-    return null
-  }
-
   const navigateInApp = (path: string) => {
     navigate(path)
     window.dispatchEvent(new PopStateEvent('popstate'))
@@ -332,12 +279,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           api.getSupportedModels(),
         ])
         setAllModels(modelConfigs)
-        const clawWalletAddress =
-          modelConfigs.find((model) => model.provider === 'claw402')?.walletAddress || null
-        if (clawWalletAddress) {
-          setBeginnerWalletAddress(clawWalletAddress)
-          persistBeginnerWalletAddress(clawWalletAddress)
-        }
         setAllExchanges(exchangeConfigs)
         setSupportedModels(models)
       } catch (error) {
@@ -364,23 +305,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     }) || []
 
   const enabledModels = allModels?.filter((m) => m.enabled) || []
-  const enabledClaw402Model = enabledModels.find((model) => model.provider === 'claw402') || null
-  const enabledClaw402Balance = parseBalanceUsdc(enabledClaw402Model?.balanceUsdc)
-  const claw402BalanceAlert =
-    enabledClaw402Model && enabledClaw402Balance !== null && enabledClaw402Balance < 1
-      ? {
-          blocking: enabledClaw402Balance <= 0,
-          title:
-            language === 'zh'
-              ? enabledClaw402Balance <= 0
-                ? 'Claw402 钱包余额为 0'
-                : 'Claw402 钱包余额偏低'
-              : enabledClaw402Balance <= 0
-                ? 'Claw402 wallet balance is zero'
-                : 'Claw402 wallet balance is low',
-          description: getClaw402BalanceMessage(enabledClaw402Balance, enabledClaw402Balance <= 0),
-        }
-      : null
   const enabledExchanges =
     allExchanges?.filter((e) => {
       if (!e.enabled) return false
@@ -527,18 +451,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         await api.stopTrader(traderId)
         toast.success(t('aiTradersToast.stopped', language))
       } else {
-        const claw402Issue = getClaw402BalanceIssue(traderId)
-        if (claw402Issue?.blocking) {
-          toast.error(claw402Issue.title, {
-            description: claw402Issue.description,
-          })
-          return
-        }
-        if (claw402Issue && !claw402Issue.blocking) {
-          toast.warning(claw402Issue.title, {
-            description: claw402Issue.description,
-          })
-        }
         await api.startTrader(traderId)
         toast.success(t('aiTradersToast.started', language))
       }
@@ -861,33 +773,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     setShowExchangeModal(true)
   }
 
-  const handleQuickSetupClaw402 = async () => {
-    if (quickSetupLoading) return
-
-    try {
-      setQuickSetupLoading(true)
-      const result = await api.prepareBeginnerOnboarding()
-      setBeginnerWalletAddress(result.address)
-      const refreshedModels = await api.getModelConfigs()
-      setAllModels(refreshedModels)
-      toast.success(
-        language === 'zh'
-          ? 'Claw402 已默认配置为 DeepSeek'
-          : 'Claw402 is configured with DeepSeek by default'
-      )
-    } catch (error) {
-      console.error('Failed to quick setup claw402:', error)
-      toast.error(
-        language === 'zh'
-          ? '一键配置 Claw402 失败'
-          : 'Failed to quick setup Claw402'
-      )
-    } finally {
-      setQuickSetupLoading(false)
-    }
-  }
-
-  const claw402Configured = configuredModels.some((model) => model.provider === 'claw402')
   const hasStrategies = (strategies?.length || 0) > 0
   const hasCreatedTrader = (traders?.length || 0) > 0
   const canCreateTrader = configuredModels.length > 0 && configuredExchanges.length > 0
@@ -966,63 +851,15 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         {isBeginnerMode ? (
           <BeginnerGuideCards
             language={language}
-            claw402Ready={claw402Configured}
+            aiModelReady={configuredModels.length > 0}
             exchangeReady={configuredExchanges.length > 0}
             strategyReady={hasStrategies}
             traderReady={hasCreatedTrader}
             canCreateTrader={canCreateTrader}
-            walletAddress={beginnerWalletAddress}
-            onQuickSetupClaw402={handleQuickSetupClaw402}
             onOpenExchange={handleAddExchange}
             onOpenStrategy={() => navigateInApp('/strategy')}
             onCreateTrader={() => setShowCreateModal(true)}
           />
-        ) : null}
-
-        {claw402BalanceAlert ? (
-          <div
-            className="mb-6 rounded-xl border px-4 py-4 md:px-5 md:py-4 flex flex-col md:flex-row md:items-start md:justify-between gap-3"
-            style={{
-              borderColor: claw402BalanceAlert.blocking ? 'rgba(239, 68, 68, 0.55)' : 'rgba(245, 158, 11, 0.45)',
-              background: claw402BalanceAlert.blocking ? 'rgba(127, 29, 29, 0.22)' : 'rgba(120, 53, 15, 0.18)',
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className="mt-0.5 rounded-full p-2"
-                style={{
-                  background: claw402BalanceAlert.blocking ? 'rgba(239, 68, 68, 0.16)' : 'rgba(245, 158, 11, 0.14)',
-                  color: claw402BalanceAlert.blocking ? '#F87171' : '#FBBF24',
-                }}
-              >
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <div
-                  className="text-sm font-semibold"
-                  style={{ color: claw402BalanceAlert.blocking ? '#FCA5A5' : '#FDE68A' }}
-                >
-                  {claw402BalanceAlert.title}
-                </div>
-                <div className="text-sm mt-1 leading-6" style={{ color: '#D4D4D8' }}>
-                  {claw402BalanceAlert.description}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => enabledClaw402Model && handleModelClick(enabledClaw402Model.id)}
-              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider border whitespace-nowrap self-start"
-              style={{
-                borderColor: claw402BalanceAlert.blocking ? 'rgba(248, 113, 113, 0.45)' : 'rgba(251, 191, 36, 0.35)',
-                color: claw402BalanceAlert.blocking ? '#FCA5A5' : '#FDE68A',
-                background: 'rgba(0, 0, 0, 0.18)',
-              }}
-            >
-              {language === 'zh' ? '查看 AI 钱包' : 'Open AI wallet'}
-            </button>
-          </div>
         ) : null}
 
         {/* Configuration Status Grid */}
