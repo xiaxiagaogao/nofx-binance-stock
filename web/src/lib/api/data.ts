@@ -4,7 +4,6 @@ import type {
   Position,
   DecisionRecord,
   Statistics,
-  CompetitionData,
   PositionHistoryResponse,
 } from '../../types'
 import { API_BASE, httpClient } from './helpers'
@@ -103,14 +102,6 @@ export const dataApi = {
       `${API_BASE}/trader/${traderId}/config`
     )
     if (!result.success) throw new Error('Failed to fetch public trader config')
-    return result.data!
-  },
-
-  async getCompetition(): Promise<CompetitionData> {
-    const result = await httpClient.get<CompetitionData>(
-      `${API_BASE}/competition`
-    )
-    if (!result.success) throw new Error('Failed to fetch competition data')
     return result.data!
   },
 

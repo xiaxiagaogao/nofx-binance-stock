@@ -48,7 +48,7 @@ export default function AgentGrid() {
 
     const handleInitialize = () => {
         if (user) {
-            window.location.href = '/strategy-market'
+            window.location.href = '/strategy'
         } else {
             window.location.href = '/login'
         }

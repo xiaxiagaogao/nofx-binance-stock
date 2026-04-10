@@ -98,32 +98,12 @@ export interface TraderInfo {
   exchange_id?: string
   is_running?: boolean
   startup_warning?: string
-  show_in_competition?: boolean
   strategy_id?: string
   strategy_name?: string
   custom_prompt?: string
   use_ai500?: boolean
   use_oi_top?: boolean
   system_prompt_template?: string
-}
-
-// Competition related types
-export interface CompetitionTraderData {
-  trader_id: string
-  trader_name: string
-  ai_model: string
-  exchange: string
-  total_equity: number
-  total_pnl: number
-  total_pnl_pct: number
-  position_count: number
-  margin_used_pct: number
-  is_running: boolean
-}
-
-export interface CompetitionData {
-  traders: CompetitionTraderData[]
-  count: number
 }
 
 // Trader Configuration Data for View Modal
@@ -135,7 +115,6 @@ export interface TraderConfigData {
   strategy_id?: string  // 策略ID
   strategy_name?: string  // 策略名称
   is_cross_margin: boolean
-  show_in_competition: boolean  // 是否在竞技场显示
   scan_interval_minutes: number
   initial_balance: number
   is_running: boolean

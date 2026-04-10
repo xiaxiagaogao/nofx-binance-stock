@@ -9,11 +9,8 @@ import { LoginPage } from './components/auth/LoginPage'
 import { SetupPage } from './components/modals/SetupPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage'
-import { CompetitionPage } from './components/trader/CompetitionPage'
 import { LandingPage } from './pages/LandingPage'
-import { FAQPage } from './pages/FAQPage'
 import { StrategyStudioPage } from './pages/StrategyStudioPage'
-import { StrategyMarketPage } from './pages/StrategyMarketPage'
 import { DataPage } from './pages/DataPage'
 import { BeginnerOnboardingPage } from './pages/BeginnerOnboardingPage'
 import { LoginRequiredOverlay } from './components/auth/LoginRequiredOverlay'
@@ -37,13 +34,10 @@ import type {
 } from './types'
 
 type Page =
-  | 'competition'
   | 'traders'
   | 'trader'
   | 'strategy'
-  | 'strategy-market'
   | 'data'
-  | 'faq'
   | 'login'
   | 'register'
 
@@ -63,11 +57,10 @@ function App() {
     if (path === '/welcome') return 'traders'
     if (path === '/traders' || hash === 'traders') return 'traders'
     if (path === '/strategy' || hash === 'strategy') return 'strategy'
-    if (path === '/strategy-market' || hash === 'strategy-market') return 'strategy-market'
     if (path === '/data' || hash === 'data') return 'data'
     if (path === '/dashboard' || hash === 'trader' || hash === 'details')
       return 'trader'
-    return 'competition' // 默认为竞赛页面
+    return 'traders' // 默认为交易员页面
   }
 
   // Login required overlay state
@@ -82,13 +75,10 @@ function App() {
   // Unified page navigation handler
   const navigateToPage = (page: Page) => {
     const pathMap: Record<Page, string> = {
-      'competition': '/competition',
-      'strategy-market': '/strategy-market',
       'data': '/data',
       'traders': '/traders',
       'trader': '/dashboard',
       'strategy': '/strategy',
-      'faq': '/faq',
       'login': '/login',
       'register': '/register',
     }
@@ -159,8 +149,6 @@ function App() {
         setCurrentPage('traders')
       } else if (path === '/strategy' || hash === 'strategy') {
         setCurrentPage('strategy')
-      } else if (path === '/strategy-market' || hash === 'strategy-market') {
-        setCurrentPage('strategy-market')
       } else if (path === '/data' || hash === 'data') {
         setCurrentPage('data')
       } else if (
@@ -173,12 +161,6 @@ function App() {
         if (traderParam) {
           setSelectedTraderSlug(traderParam)
         }
-      } else if (
-        path === '/competition' ||
-        hash === 'competition' ||
-        hash === ''
-      ) {
-        setCurrentPage('competition')
       }
       setRoute(path)
     }
@@ -192,10 +174,6 @@ function App() {
   }, [])
 
   // 切换页面时更新URL hash (当前通过按钮直接调用setCurrentPage，这个函数暂时保留用于未来扩展)
-  // const navigateToPage = (page: Page) => {
-  //   setCurrentPage(page);
-  //   window.location.hash = page === 'competition' ? '' : 'trader';
-  // };
 
   // 获取trader列表（仅在用户登录时）
   const { data: traders, error: tradersError } = useSWR<TraderInfo[]>(
@@ -337,8 +315,6 @@ function App() {
   useEffect(() => {
     if (route === '/welcome') {
       setCurrentPage('traders')
-    } else if (route === '/competition') {
-      setCurrentPage('competition')
     } else if (route === '/traders') {
       setCurrentPage('traders')
     } else if (route === '/dashboard') {
@@ -394,31 +370,6 @@ function App() {
       window.location.href = '/traders'
       return null
     }
-  }
-  if (route === '/faq') {
-    return (
-      <div
-        className="min-h-screen"
-        style={{ background: '#0B0E11', color: '#EAECEF' }}
-      >
-        <HeaderBar
-          isLoggedIn={!!user}
-          currentPage="faq"
-          language={language}
-          onLanguageChange={setLanguage}
-          user={user}
-          onLogout={logout}
-          onLoginRequired={handleLoginRequired}
-          onPageChange={navigateToPage}
-        />
-        <FAQPage />
-        <LoginRequiredOverlay
-          isOpen={loginOverlayOpen}
-          onClose={() => setLoginOverlayOpen(false)}
-          featureName={loginOverlayFeature}
-        />
-      </div>
-    )
   }
   if (route === '/reset-password') {
     return <ResetPasswordPage />
@@ -510,12 +461,8 @@ function App() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
           >
-            {currentPage === 'competition' ? (
-              <CompetitionPage />
-            ) : currentPage === 'data' ? (
+            {currentPage === 'data' ? (
               <DataPage />
-            ) : currentPage === 'strategy-market' ? (
-              <StrategyMarketPage />
             ) : currentPage === 'traders' ? (
               <AITradersPage
                 onTraderSelect={(traderId) => {

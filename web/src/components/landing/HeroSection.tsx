@@ -139,7 +139,7 @@ export default function HeroSection({ language }: HeroSectionProps) {
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
         >
           <motion.a
-            href="/competition"
+            href="/traders"
             className="group flex items-center gap-3 px-8 py-4 rounded-xl font-bold text-lg transition-all"
             style={{
               background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)',
