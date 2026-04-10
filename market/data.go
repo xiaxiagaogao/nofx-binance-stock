@@ -38,23 +38,10 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 	// Normalize symbol according to target exchange
 	symbol = NormalizeForExchange(symbol, exchange)
 
-	// Only Hyperliquid should route xyz assets to Hyperliquid API.
-	// Binance may trade stock-like assets using Binance-native symbols such as TSLAUSDT.
-	useHyperliquidAPI := exchange == "hyperliquid" || exchange == "hyperliquid-xyz" || exchange == "xyz"
-
-	// Get 3-minute K-line data (or 5-minute for xyz assets as 3m may not be available)
-	if useHyperliquidAPI {
-		// Use Hyperliquid API for xyz dex assets (use 5m since 3m may not be available)
-		klines3m, err = getKlinesFromHyperliquid(symbol, "5m", 100)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to get 5-minute K-line from Hyperliquid: %v", err)
-		}
-	} else {
-		// Use CoinAnk for regular crypto assets with exchange-specific data
-		klines3m, err = getKlinesFromCoinAnk(symbol, "3m", exchange, 100)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to get 3-minute K-line from CoinAnk (%s): %v", exchange, err)
-		}
+	// Get 3-minute K-line data from Binance
+	klines3m, err = getKlinesFromBinance(symbol, "3m", 100)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get 3-minute K-line from Binance (%s): %v", exchange, err)
 	}
 
 	// Data staleness detection: Prevent DOGEUSDT-style price freeze issues
@@ -63,17 +50,10 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 		return nil, fmt.Errorf("%s data is stale, possible cache failure", symbol)
 	}
 
-	// Get 4-hour K-line data
-	if useHyperliquidAPI {
-		klines4h, err = getKlinesFromHyperliquid(symbol, "4h", 100)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to get 4-hour K-line from Hyperliquid: %v", err)
-		}
-	} else {
-		klines4h, err = getKlinesFromCoinAnk(symbol, "4h", exchange, 100)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to get 4-hour K-line from CoinAnk (%s): %v", exchange, err)
-		}
+	// Get 4-hour K-line data from Binance
+	klines4h, err = getKlinesFromBinance(symbol, "4h", 100)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get 4-hour K-line from Binance (%s): %v", exchange, err)
 	}
 
 	// Check if data is empty
@@ -173,28 +153,16 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 	timeframeData := make(map[string]*TimeframeSeriesData)
 	var primaryKlines []Kline
 
-	// Default timeframe path is Binance-centric; do not auto-route stock-like symbols to Hyperliquid here.
-	isXyzAsset := false
-
 	// Get K-line data for each timeframe
 	for _, tf := range timeframes {
 		var klines []Kline
 		var err error
 
-		if isXyzAsset {
-			// Use Hyperliquid API for xyz dex assets
-			klines, err = getKlinesFromHyperliquid(symbol, tf, 200)
-			if err != nil {
-				logger.Infof("⚠️ Failed to get %s %s K-line from Hyperliquid: %v", symbol, tf, err)
-				continue
-			}
-		} else {
-			// Use CoinAnk for regular crypto assets (default to Binance)
-			klines, err = getKlinesFromCoinAnk(symbol, tf, "binance", 200)
-			if err != nil {
-				logger.Infof("⚠️ Failed to get %s %s K-line from CoinAnk: %v", symbol, tf, err)
-				continue
-			}
+		// Fetch K-line data from Binance
+		klines, err = getKlinesFromBinance(symbol, tf, 200)
+		if err != nil {
+			logger.Infof("⚠️ Failed to get %s %s K-line from Binance: %v", symbol, tf, err)
+			continue
 		}
 
 		if len(klines) == 0 {

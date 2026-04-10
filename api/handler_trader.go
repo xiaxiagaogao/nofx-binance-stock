@@ -85,46 +85,12 @@ func missingExchangeFields(exchange *store.Exchange) []string {
 
 	var missing []string
 	switch exchange.ExchangeType {
-	case "binance", "bybit", "gate", "indodax":
+	case "binance":
 		if exchange.APIKey == "" {
 			missing = append(missing, "API Key")
 		}
 		if exchange.SecretKey == "" {
 			missing = append(missing, "Secret Key")
-		}
-	case "okx", "bitget", "kucoin":
-		if exchange.APIKey == "" {
-			missing = append(missing, "API Key")
-		}
-		if exchange.SecretKey == "" {
-			missing = append(missing, "Secret Key")
-		}
-		if exchange.Passphrase == "" {
-			missing = append(missing, "Passphrase")
-		}
-	case "hyperliquid":
-		if exchange.APIKey == "" {
-			missing = append(missing, "私钥")
-		}
-		if strings.TrimSpace(exchange.HyperliquidWalletAddr) == "" {
-			missing = append(missing, "钱包地址")
-		}
-	case "aster":
-		if strings.TrimSpace(exchange.AsterUser) == "" {
-			missing = append(missing, "Aster User")
-		}
-		if strings.TrimSpace(exchange.AsterSigner) == "" {
-			missing = append(missing, "Aster Signer")
-		}
-		if exchange.AsterPrivateKey == "" {
-			missing = append(missing, "Aster Private Key")
-		}
-	case "lighter":
-		if strings.TrimSpace(exchange.LighterWalletAddr) == "" {
-			missing = append(missing, "钱包地址")
-		}
-		if exchange.LighterAPIKeyPrivateKey == "" {
-			missing = append(missing, "API Key Private Key")
 		}
 	}
 
@@ -167,7 +133,7 @@ func validateExchangeForTraderCreation(exchange *store.Exchange) (string, string
 	}
 
 	switch exchange.ExchangeType {
-	case "binance", "bybit", "okx", "bitget", "gate", "kucoin", "hyperliquid", "aster", "lighter", "indodax":
+	case "binance":
 		return "", "", nil
 	default:
 		return formatTraderCreationError(

@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"nofx/logger"
-	"nofx/wallet"
 
 	gethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
@@ -79,7 +79,7 @@ func (s *Server) handleBeginnerOnboarding(c *gin.Context) {
 		Provider:          "claw402",
 		DefaultModel:      "deepseek",
 		ConfiguredModelID: configuredModelID,
-		BalanceUSDC:       wallet.QueryUSDCBalanceStr(address),
+		BalanceUSDC:       "",
 		EnvSaved:          envSaved,
 		EnvPath:           envPath,
 		ReusedExisting:    reusedExisting,
@@ -126,7 +126,7 @@ func (s *Server) handleCurrentBeginnerWallet(c *gin.Context) {
 		c.JSON(http.StatusOK, currentBeginnerWalletResponse{
 			Found:         true,
 			Address:       address,
-			BalanceUSDC:   wallet.QueryUSDCBalanceStr(address),
+			BalanceUSDC:   "",
 			Source:        "model",
 			Claw402Status: claw402Status,
 		})
@@ -138,7 +138,7 @@ func (s *Server) handleCurrentBeginnerWallet(c *gin.Context) {
 		c.JSON(http.StatusOK, currentBeginnerWalletResponse{
 			Found:         true,
 			Address:       address,
-			BalanceUSDC:   wallet.QueryUSDCBalanceStr(address),
+			BalanceUSDC:   "",
 			Source:        "env",
 			Claw402Status: claw402Status,
 		})
@@ -320,4 +320,18 @@ func upsertEnvFile(path string, values map[string]string) error {
 	}
 
 	return nil
+}
+
+func checkClaw402Health() string {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("https://claw402.ai/health")
+	if err != nil {
+		return "unreachable"
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return "ok"
+	}
+	return "error"
 }

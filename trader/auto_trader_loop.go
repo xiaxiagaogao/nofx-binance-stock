@@ -6,7 +6,6 @@ import (
 	"nofx/kernel"
 	"nofx/logger"
 	"nofx/store"
-	"nofx/wallet"
 	"strings"
 	"time"
 )
@@ -631,24 +630,7 @@ func (at *AutoTrader) checkClaw402Balance() {
 		at.name, dailyCost, at.config.CustomModelName, scanMinutes)
 
 	if at.claw402WalletAddr != "" {
-		balance, err := wallet.QueryUSDCBalance(at.claw402WalletAddr)
-		if err != nil {
-			logger.Warnf("⚠️ [%s] Failed to query USDC balance: %v", at.name, err)
-			return
-		}
-
-		if balance < 1.0 {
-			logger.Warnf("⚠️ [%s] Low USDC balance: $%.2f — AI may stop soon!", at.name, balance)
-		}
-		if balance <= 0 {
-			logger.Errorf("🚨 [%s] USDC balance is ZERO — AI calls will fail!", at.name)
-		}
-
-		runway := float64(0)
-		if dailyCost > 0 {
-			runway = balance / dailyCost
-		}
-		logger.Infof("💰 [%s] USDC Balance: $%.2f | Daily AI cost: ~$%.2f | Runway: ~%.1f days",
-			at.name, balance, dailyCost, runway)
+		logger.Infof("💰 [%s] Claw402 wallet: %s | Daily AI cost: ~$%.2f",
+			at.name, at.claw402WalletAddr, dailyCost)
 	}
 }

@@ -89,31 +89,16 @@ func TestSanitizeModelConfigForLog(t *testing.T) {
 
 func TestSanitizeExchangeConfigForLog(t *testing.T) {
 	exchanges := map[string]struct {
-		Enabled               bool   `json:"enabled"`
-		APIKey                string `json:"api_key"`
-		SecretKey             string `json:"secret_key"`
-		Testnet               bool   `json:"testnet"`
-		HyperliquidWalletAddr string `json:"hyperliquid_wallet_addr"`
-		AsterUser             string `json:"aster_user"`
-		AsterSigner           string `json:"aster_signer"`
-		AsterPrivateKey       string `json:"aster_private_key"`
-		LighterWalletAddr     string `json:"lighter_wallet_addr"`
-		LighterPrivateKey     string `json:"lighter_private_key"`
+		Enabled   bool   `json:"enabled"`
+		APIKey    string `json:"api_key"`
+		SecretKey string `json:"secret_key"`
+		Testnet   bool   `json:"testnet"`
 	}{
 		"binance": {
 			Enabled:   true,
 			APIKey:    "binance_api_key_1234567890abcdef",
 			SecretKey: "binance_secret_key_1234567890abcdef",
 			Testnet:   false,
-			LighterWalletAddr:   "",
-			LighterPrivateKey:   "",
-		},
-		"hyperliquid": {
-			Enabled:               true,
-			HyperliquidWalletAddr: "0x1234567890abcdef1234567890abcdef12345678",
-			Testnet:               false,
-			LighterWalletAddr:     "",
-			LighterPrivateKey:     "",
 		},
 	}
 
@@ -141,22 +126,6 @@ func TestSanitizeExchangeConfigForLog(t *testing.T) {
 
 	if maskedSecretKey != "bina****cdef" {
 		t.Errorf("expected masked secret_key='bina****cdef', got %q", maskedSecretKey)
-	}
-
-	// Check Hyperliquid configuration
-	hlConfig, ok := result["hyperliquid"].(map[string]interface{})
-	if !ok {
-		t.Fatal("hyperliquid config not found or wrong type")
-	}
-
-	walletAddr, ok := hlConfig["hyperliquid_wallet_addr"].(string)
-	if !ok {
-		t.Fatal("hyperliquid_wallet_addr not found or wrong type")
-	}
-
-	// Wallet address should not be masked
-	if walletAddr != "0x1234567890abcdef1234567890abcdef12345678" {
-		t.Errorf("wallet address should not be masked, got %q", walletAddr)
 	}
 }
 

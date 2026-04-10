@@ -10,7 +10,6 @@ import (
 	"nofx/crypto"
 	"nofx/logger"
 	"nofx/security"
-	"nofx/wallet"
 
 	"github.com/gin-gonic/gin"
 )
@@ -91,7 +90,6 @@ func (s *Server) handleGetModelConfigs(c *gin.Context) {
 			if privateKey := strings.TrimSpace(model.APIKey.String()); privateKey != "" {
 				if walletAddress, addrErr := walletAddressFromPrivateKey(privateKey); addrErr == nil {
 					safeModel.WalletAddress = walletAddress
-					safeModel.BalanceUSDC = wallet.QueryUSDCBalanceStr(walletAddress)
 				} else {
 					logger.Warnf("⚠️ Failed to derive claw402 wallet address for model %s: %v", model.ID, addrErr)
 				}
