@@ -19,7 +19,6 @@ import { TelegramConfigModal } from './TelegramConfigModal'
 import { ModelConfigModal } from './ModelConfigModal'
 import { ConfigStatusGrid } from './ConfigStatusGrid'
 import { TradersList } from './TradersList'
-import { BeginnerGuideCards } from './BeginnerGuideCards'
 import {
   Bot,
   Plus,
@@ -27,7 +26,6 @@ import {
 } from 'lucide-react'
 import { confirmToast } from '../../lib/notify'
 import { toast } from 'sonner'
-import { getUserMode } from '../../lib/onboarding'
 import type { Strategy } from '../../types'
 import { ApiError } from '../../lib/httpClient'
 
@@ -53,7 +51,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const [visibleTraderAddresses, setVisibleTraderAddresses] = useState<Set<string>>(new Set())
   const [visibleExchangeAddresses, setVisibleExchangeAddresses] = useState<Set<string>>(new Set())
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const isBeginnerMode = getUserMode() === 'beginner'
   const getErrorMessage = (error: unknown, fallback: string) => {
     if (error instanceof Error && error.message.trim() !== '') {
       return error.message
@@ -848,19 +845,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           </div>
         </div>
 
-        {isBeginnerMode ? (
-          <BeginnerGuideCards
-            language={language}
-            aiModelReady={configuredModels.length > 0}
-            exchangeReady={configuredExchanges.length > 0}
-            strategyReady={hasStrategies}
-            traderReady={hasCreatedTrader}
-            canCreateTrader={canCreateTrader}
-            onOpenExchange={handleAddExchange}
-            onOpenStrategy={() => navigateInApp('/strategy')}
-            onCreateTrader={() => setShowCreateModal(true)}
-          />
-        ) : null}
 
         {/* Configuration Status Grid */}
         <ConfigStatusGrid
