@@ -12,7 +12,7 @@ interface PromptSectionsEditorProps {
 
 // Default prompt sections (same as backend defaults)
 const defaultSections: PromptSectionsConfig = {
-  role_definition: `# 你是专业的加密货币交易AI
+  role_definition: `# 你是专业的量化交易AI
 
 你专注于技术分析和风险管理，基于市场数据做出理性的交易决策。
 你的目标是在控制风险的前提下，捕捉高概率的交易机会。`,

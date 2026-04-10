@@ -84,9 +84,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       case 'trader.create.invalid_request':
         return zh ? '提交的信息不完整，或者格式不正确。请检查后重新提交。' : 'The submitted information is incomplete or invalid. Please review it and try again.'
       case 'trader.create.invalid_btc_eth_leverage':
-        return zh ? 'BTC/ETH 杠杆倍数需要在 1 到 50 倍之间。' : 'BTC/ETH leverage must be between 1x and 50x.'
       case 'trader.create.invalid_altcoin_leverage':
-        return zh ? '山寨币杠杆倍数需要在 1 到 20 倍之间。' : 'Altcoin leverage must be between 1x and 20x.'
+        return zh ? '杠杆倍数需要在 1 到 10 倍之间。' : 'Leverage must be between 1x and 10x.'
       case 'trader.create.invalid_symbol':
         return zh ? `交易对 ${symbol} 的格式不正确，目前只支持以 USDT 结尾的合约交易对。` : `Trading pair ${symbol} is invalid. Only perpetual pairs ending with USDT are supported.`
       case 'trader.create.model_not_found':

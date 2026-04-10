@@ -374,7 +374,7 @@ export function StrategyMarketPage() {
                                   <div className="flex gap-3">
                                     <div className="flex flex-col">
                                       <span className="text-zinc-600 scale-90 origin-left">LEV</span>
-                                      <span className="text-zinc-300 font-bold">{strategy.config.risk_control.btc_eth_max_leverage || '-'}x</span>
+                                      <span className="text-zinc-300 font-bold">{(strategy.config.risk_control.max_leverage ?? strategy.config.risk_control.btc_eth_max_leverage) || '-'}x</span>
                                     </div>
                                     <div className="flex flex-col">
                                       <span className="text-zinc-600 scale-90 origin-left">POS</span>
