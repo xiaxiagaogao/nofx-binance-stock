@@ -95,7 +95,10 @@ func (c *Client) GetCoinDataBatch(symbols []string, include string) map[string]*
 		}
 		if data != nil {
 			// Use normalized symbol as key
-			normalizedSymbol := NormalizeSymbol(symbol)
+			normalizedSymbol := strings.ToUpper(symbol)
+			if !strings.HasSuffix(normalizedSymbol, "USDT") {
+				normalizedSymbol += "USDT"
+			}
 			result[normalizedSymbol] = data
 		}
 	}
