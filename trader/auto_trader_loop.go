@@ -6,6 +6,7 @@ import (
 	"nofx/kernel"
 	"nofx/logger"
 	"nofx/store"
+	"os"
 	"strings"
 	"time"
 )
@@ -176,6 +177,36 @@ func (at *AutoTrader) runCycle() error {
 		at.safeModeReason = ""
 	}
 
+	// Persist any macro thesis update proposed by the AI (at most one per cycle)
+	if aiDecision != nil && at.store != nil {
+		for _, d := range aiDecision.Decisions {
+			if d.MacroThesisUpdate == nil {
+				continue
+			}
+			u := d.MacroThesisUpdate
+			validHours := u.ValidHours
+			if validHours <= 0 {
+				validHours = 24
+			}
+			thesis := &store.MacroThesis{
+				TraderID:        at.id,
+				MarketRegime:    u.MarketRegime,
+				ThesisText:      u.ThesisText,
+				SectorBias:      store.EncodeSectorBias(u.SectorBias),
+				KeyRisks:        store.EncodeKeyRisks(u.KeyRisks),
+				PortfolioIntent: u.PortfolioIntent,
+				ValidHours:      validHours,
+				Source:          "ai",
+			}
+			if err := at.store.MacroThesis().Create(thesis); err != nil {
+				logger.Warnf("[%s] failed to save macro thesis update: %v", at.name, err)
+			} else {
+				logger.Infof("[%s] macro thesis updated: regime=%s intent=%s", at.name, u.MarketRegime, u.PortfolioIntent)
+			}
+			break // only one thesis update per cycle
+		}
+	}
+
 	// // 5. Print system prompt
 	// logger.Infof("\n" + strings.Repeat("=", 70))
 	// logger.Infof("📋 System prompt [template: %s]", at.systemPromptTemplate)
@@ -285,6 +316,76 @@ func (at *AutoTrader) runCycle() error {
 	return nil
 }
 
+// readMacroReport reads the user-pushed macro report from macro_reports/latest.md.
+// Returns empty string if the file does not exist. If the report is older than
+// 48 hours, it is still returned but prefixed with a STALE marker so the AI
+// knows to weight it less.
+func readMacroReport() string {
+	path := "macro_reports/latest.md"
+	info, err := os.Stat(path)
+	if err != nil {
+		return "" // file not present — normal
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return ""
+	}
+	age := time.Since(info.ModTime())
+	if age > 48*time.Hour {
+		return fmt.Sprintf("[STALE — %s old]\n\n%s", age.Round(time.Hour).String(), content)
+	}
+	return content
+}
+
+// calculatePortfolioExposure aggregates portfolio-level risk metrics from the
+// current open positions. Returns nil if there are no positions.
+func calculatePortfolioExposure(positions []kernel.PositionInfo, riskConfig store.RiskControlConfig) *kernel.PortfolioExposure {
+	if len(positions) == 0 {
+		return nil
+	}
+	exp := &kernel.PortfolioExposure{
+		CategoryBreakdown: make(map[string]float64),
+	}
+	for _, p := range positions {
+		notional := p.Quantity * p.MarkPrice
+		cat := riskConfig.GetSymbolCategory(p.Symbol)
+		if cat == "" {
+			cat = "other"
+		}
+		exp.CategoryBreakdown[cat] += notional
+
+		if strings.EqualFold(p.Side, "long") {
+			exp.NetLongUSD += notional
+		} else {
+			exp.NetShortUSD += notional
+		}
+
+		switch p.IntentType {
+		case "core_beta":
+			exp.CoreBetaUSD += notional
+		case "tactical_alpha":
+			exp.TacticalAlphaUSD += notional
+		case "hedge":
+			exp.HedgeUSD += notional
+		}
+	}
+	net := exp.NetLongUSD - exp.NetShortUSD
+	total := exp.NetLongUSD + exp.NetShortUSD
+	switch {
+	case total > 0 && net/total > 0.2:
+		exp.NetDirection = "net_long"
+	case total > 0 && net/total < -0.2:
+		exp.NetDirection = "net_short"
+	default:
+		exp.NetDirection = "balanced"
+	}
+	return exp
+}
+
 // buildTradingContext builds trading context
 func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 	// 1. Get account information
@@ -363,12 +464,14 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		currentPositionKeys[posKey] = true
 
 		var updateTime int64
+		intentType := ""
 		// Priority 1: Get from database (trader_positions table) - most accurate
 		if at.store != nil {
 			if dbPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, symbol, side); err == nil && dbPos != nil {
 				if dbPos.EntryTime > 0 {
 					updateTime = dbPos.EntryTime
 				}
+				intentType = dbPos.IntentType
 			}
 		}
 		// Priority 2: Get from exchange API (Bybit: createdTime, OKX: createdTime)
@@ -403,6 +506,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 			LiquidationPrice: liquidationPrice,
 			MarginUsed:       marginUsed,
 			UpdateTime:       updateTime,
+			IntentType:       intentType,
 		})
 	}
 
@@ -578,6 +682,45 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 				at.name, len(ctx.PriceRankingData.Durations))
 		}
 	}
+
+	// --- Fund Manager Extensions ---
+
+	// Risk config (reuse strategyConfig declared earlier in this function)
+	riskCfg := store.RiskControlConfig{}
+	if strategyConfig != nil {
+		riskCfg = strategyConfig.RiskControl
+	}
+
+	// 1. Load persisted macro thesis from DB
+	if at.store != nil {
+		if thesis, err := at.store.MacroThesis().GetLatest(at.id); err == nil && thesis != nil {
+			age := time.Since(thesis.UpdatedAt).Hours()
+			ctx.MacroThesis = &kernel.MacroThesisContext{
+				MarketRegime:    thesis.MarketRegime,
+				ThesisText:      thesis.ThesisText,
+				SectorBias:      thesis.ParseSectorBias(),
+				KeyRisks:        thesis.ParseKeyRisks(),
+				PortfolioIntent: thesis.PortfolioIntent,
+				AgeHours:        age,
+				Source:          thesis.Source,
+			}
+			if thesis.IsStale() {
+				logger.Infof("[%s] macro thesis is stale (%.1fh old), AI will be asked to update", at.name, age)
+			}
+		} else if err != nil {
+			logger.Warnf("[%s] failed to load macro thesis: %v", at.name, err)
+		}
+	}
+
+	// 2. Read user-pushed macro report from filesystem
+	ctx.MacroReport = readMacroReport()
+
+	// 3. Calculate portfolio exposure from current positions
+	ctx.PortfolioExposure = calculatePortfolioExposure(ctx.Positions, riskCfg)
+
+	// 4. Session scale factor based on current US trading session
+	session := kernel.GetUSTradingSession(time.Now().UTC())
+	ctx.SessionScaleFactor = riskCfg.GetSessionRiskScale(session)
 
 	return ctx, nil
 }
