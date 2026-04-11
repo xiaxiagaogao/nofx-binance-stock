@@ -34,6 +34,7 @@ type PositionInfo struct {
 	LiquidationPrice float64 `json:"liquidation_price"`
 	MarginUsed       float64 `json:"margin_used"`
 	UpdateTime       int64   `json:"update_time"` // Position update timestamp (milliseconds)
+	IntentType       string  `json:"intent_type,omitempty"` // core_beta|tactical_alpha|hedge|opportunistic (from DB)
 }
 
 // AccountInfo account information
@@ -108,6 +109,12 @@ type Context struct {
 	MaxLeverage        int                                `json:"-"`
 	TradingSession     string                             `json:"-"` // "us_market_open", "us_pre_market", "us_after_hours", "us_market_closed"
 	Timeframes         []string                           `json:"-"`
+
+	// Fund manager extensions
+	MacroThesis        *MacroThesisContext `json:"macro_thesis,omitempty"`
+	MacroReport        string              `json:"macro_report,omitempty"`    // user-pushed external report content
+	PortfolioExposure  *PortfolioExposure  `json:"portfolio_exposure,omitempty"`
+	SessionScaleFactor float64             `json:"session_scale_factor"`      // current session's risk multiplier (0.0-1.0)
 }
 
 // Decision AI trading decision
@@ -132,6 +139,11 @@ type Decision struct {
 	Confidence int     `json:"confidence,omitempty"` // Confidence level (0-100)
 	RiskUSD    float64 `json:"risk_usd,omitempty"`   // Maximum USD risk
 	Reasoning  string  `json:"reasoning"`
+
+	// Fund manager extensions (optional — AI may or may not include these)
+	IntentType        string             `json:"intent_type,omitempty"`         // core_beta|tactical_alpha|hedge|opportunistic
+	EntryThesis       string             `json:"entry_thesis,omitempty"`        // why entering this specific position
+	MacroThesisUpdate *MacroThesisUpdate `json:"macro_thesis_update,omitempty"` // proposed thesis update (max once per cycle)
 }
 
 // FullDecision AI's complete decision (including chain of thought)
@@ -143,6 +155,7 @@ type FullDecision struct {
 	RawResponse         string     `json:"raw_response"`
 	Timestamp           time.Time  `json:"timestamp"`
 	AIRequestDurationMs int64      `json:"ai_request_duration_ms,omitempty"`
+	MacroThesisUpdate   *MacroThesisUpdate `json:"macro_thesis_update,omitempty"`
 }
 
 // QuantData quantitative data structure (fund flow, position changes, price changes)
@@ -173,6 +186,41 @@ type OIDeltaData struct {
 	OIDelta        float64 `json:"oi_delta"`
 	OIDeltaValue   float64 `json:"oi_delta_value"`
 	OIDeltaPercent float64 `json:"oi_delta_percent"`
+}
+
+// MacroThesisContext is the AI's current macro thesis injected into each trading cycle.
+// Loaded from store.MacroThesis at the start of buildTradingContext and passed to the AI prompt.
+type MacroThesisContext struct {
+	MarketRegime    string            `json:"market_regime"` // risk_on|risk_off|mixed|cautious
+	ThesisText      string            `json:"thesis_text"`
+	SectorBias      map[string]string `json:"sector_bias,omitempty"` // {"semiconductor":"bullish"}
+	KeyRisks        []string          `json:"key_risks,omitempty"`   // ["Fed hike risk"]
+	PortfolioIntent string            `json:"portfolio_intent"`      // "building_tech_long"
+	AgeHours        float64           `json:"age_hours"`             // hours since last update
+	Source          string            `json:"source"`                // "ai" | "manual"
+}
+
+// PortfolioExposure aggregates portfolio-level risk metrics for the AI's awareness.
+// Computed from current open positions at context build time.
+type PortfolioExposure struct {
+	CategoryBreakdown map[string]float64 `json:"category_breakdown"` // category -> total USD notional
+	NetLongUSD        float64            `json:"net_long_usd"`
+	NetShortUSD       float64            `json:"net_short_usd"`
+	NetDirection      string             `json:"net_direction"` // "net_long"|"net_short"|"balanced"
+	CoreBetaUSD       float64            `json:"core_beta_usd"`
+	TacticalAlphaUSD  float64            `json:"tactical_alpha_usd"`
+	HedgeUSD          float64            `json:"hedge_usd"`
+}
+
+// MacroThesisUpdate is the AI's proposed update to its macro thesis.
+// Returned as an optional field inside a Decision; persisted after each cycle.
+type MacroThesisUpdate struct {
+	MarketRegime    string            `json:"market_regime"`
+	ThesisText      string            `json:"thesis_text"`
+	SectorBias      map[string]string `json:"sector_bias,omitempty"`
+	KeyRisks        []string          `json:"key_risks,omitempty"`
+	PortfolioIntent string            `json:"portfolio_intent"`
+	ValidHours      int               `json:"valid_hours"` // 0 = use default (24h)
 }
 
 // ============================================================================
