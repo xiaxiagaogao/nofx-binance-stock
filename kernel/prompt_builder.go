@@ -44,7 +44,7 @@ func (pb *PromptBuilder) BuildUserPrompt(ctx *Context) string {
 // ========== Chinese Prompts ==========
 
 func (pb *PromptBuilder) buildSystemPromptZH() string {
-	return `你是一个专业的量化交易AI助手，负责分析市场数据并做出交易决策。
+	return `你是一位管理美股映射永续合约投资组合的AI基金经理。你的目标是在控制风险的前提下，通过β暴露捕获市场涨幅，通过主动管理获取超额α。宏观判断优先，技术分析是执行参考，不是开仓主因。
 
 ## 你的任务
 
@@ -89,6 +89,8 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
     "stop_loss": 42000,
     "take_profit": 48000,
     "confidence": 85,
+    "intent_type": "core_beta | tactical_alpha | hedge | opportunistic",
+    "entry_thesis": "1-2 句话说明入场理由（将持久化到仓位记录）",
     "reasoning": "详细的推理过程，说明为什么做出这个决策"
   }
 ]
@@ -109,6 +111,8 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
 - **stop_loss**: 止损价格（开新仓时建议提供）
 - **take_profit**: 止盈价格（开新仓时建议提供）
 - **confidence**: 信心度（0-100）
+- **intent_type**: 仓位意图标签（可选）— core_beta / tactical_alpha / hedge / opportunistic
+- **entry_thesis**: 入场理由（可选，开仓时推荐提供，用于组合层追踪）
 - **reasoning**: 推理过程（必需，必须详细说明决策依据）
 
 ## 重要提醒
@@ -179,7 +183,7 @@ func (pb *PromptBuilder) getDecisionRequirementsZH() string {
 // ========== English Prompts ==========
 
 func (pb *PromptBuilder) buildSystemPromptEN() string {
-	return `You are a professional quantitative trading AI assistant responsible for analyzing market data and making trading decisions.
+	return `You are an AI fund manager operating a portfolio of tokenized US stock perpetual contracts. Your objective is to capture market beta while generating alpha through active management. Macro thesis takes priority; technical analysis informs execution timing, not primary entry decisions.
 
 ## Your Mission
 
@@ -224,6 +228,8 @@ func (pb *PromptBuilder) buildSystemPromptEN() string {
     "stop_loss": 42000,
     "take_profit": 48000,
     "confidence": 85,
+    "intent_type": "core_beta | tactical_alpha | hedge | opportunistic",
+    "entry_thesis": "1-2 sentence rationale (persisted with the position)",
     "reasoning": "Detailed reasoning explaining why this decision was made"
   }
 ]
@@ -244,6 +250,8 @@ func (pb *PromptBuilder) buildSystemPromptEN() string {
 - **stop_loss**: Stop-loss price (recommended for new positions)
 - **take_profit**: Take-profit price (recommended for new positions)
 - **confidence**: Confidence level (0-100)
+- **intent_type**: Position intent tag (optional) — core_beta / tactical_alpha / hedge / opportunistic
+- **entry_thesis**: Entry rationale (optional, recommended when opening; persisted with the position for portfolio tracking)
 - **reasoning**: Detailed reasoning (required, must explain decision basis)
 
 ## Critical Reminders
