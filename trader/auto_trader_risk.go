@@ -2,6 +2,7 @@ package trader
 
 import (
 	"fmt"
+	"nofx/kernel"
 	"nofx/logger"
 	"time"
 )
@@ -90,10 +91,18 @@ func (at *AutoTrader) checkPositionDrawdown() {
 			drawdownPct = ((peakPnLPct - currentPnLPct) / peakPnLPct) * 100
 		}
 
-		// Check close position condition: profit > 5% and drawdown >= 40%
-		if currentPnLPct > 5.0 && drawdownPct >= 40.0 {
-			logger.Infof("🚨 Drawdown close position condition triggered: %s %s | Current profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%%",
-				symbol, side, currentPnLPct, peakPnLPct, drawdownPct)
+		// Resolve trailing stop thresholds from strategy config (fractions -> percent)
+		activationProfitPct := 3.0 // default 3%
+		closeThresholdPct := 25.0  // default 25%
+		if at.config.StrategyConfig != nil {
+			activationProfitPct = at.config.StrategyConfig.RiskControl.EffectiveDrawdownActivationProfit() * 100
+			closeThresholdPct = at.config.StrategyConfig.RiskControl.EffectiveDrawdownCloseThreshold() * 100
+		}
+
+		// Check close position condition: profit > activationProfit AND drawdown >= closeThreshold
+		if currentPnLPct > activationProfitPct && drawdownPct >= closeThresholdPct {
+			logger.Infof("🚨 Drawdown close position condition triggered: %s %s | Current profit: %.2f%% | Peak profit: %.2f%% | Drawdown: %.2f%% (threshold %.1f%%)",
+				symbol, side, currentPnLPct, peakPnLPct, drawdownPct, closeThresholdPct)
 
 			// Execute close position
 			if err := at.emergencyClosePosition(symbol, side); err != nil {
@@ -103,7 +112,7 @@ func (at *AutoTrader) checkPositionDrawdown() {
 				// Clear cache for this position after closing
 				at.ClearPeakPnLCache(symbol, side)
 			}
-		} else if currentPnLPct > 5.0 {
+		} else if currentPnLPct > activationProfitPct {
 			// Record situations close to close position condition (for debugging)
 			logger.Infof("📊 Drawdown monitoring: %s %s | Profit: %.2f%% | Peak: %.2f%% | Drawdown: %.2f%%",
 				symbol, side, currentPnLPct, peakPnLPct, drawdownPct)
@@ -186,13 +195,17 @@ func (at *AutoTrader) enforcePositionValueRatio(positionSizeUSD float64, equity 
 	riskControl := at.config.StrategyConfig.RiskControl
 	maxPositionValueRatio := riskControl.EffectiveMaxPositionValueRatio()
 
-	// Calculate max allowed position value = equity × ratio
-	maxPositionValue := equity * maxPositionValueRatio
+	// Session-based risk scaling: reduce exposure outside US market hours
+	session := kernel.GetUSTradingSession(time.Now().UTC())
+	sessionScale := riskControl.GetSessionRiskScale(session)
+
+	// Calculate max allowed position value = equity × ratio × session_scale
+	maxPositionValue := equity * maxPositionValueRatio * sessionScale
 
 	// Check if position size exceeds limit
 	if positionSizeUSD > maxPositionValue {
-		logger.Infof("  ⚠️ [RISK CONTROL] Position %.2f USDT exceeds limit (equity %.2f × %.1fx = %.2f USDT max for %s), capping",
-			positionSizeUSD, equity, maxPositionValueRatio, maxPositionValue, symbol)
+		logger.Infof("  ⚠️ [RISK CONTROL] Position %.2f USDT exceeds limit (equity %.2f × %.1fx × session %.2f = %.2f USDT max for %s, session=%s), capping",
+			positionSizeUSD, equity, maxPositionValueRatio, sessionScale, maxPositionValue, symbol, session)
 		return maxPositionValue, true
 	}
 
@@ -229,6 +242,40 @@ func (at *AutoTrader) enforceMaxPositions(currentPositionCount int) error {
 
 	if currentPositionCount >= maxPositions {
 		return fmt.Errorf("❌ [RISK CONTROL] Already at max positions (%d/%d)", currentPositionCount, maxPositions)
+	}
+	return nil
+}
+
+// enforceMaxSameCategoryPositions checks category-based concentration limits (CODE ENFORCED).
+// Prevents opening a position that would exceed MaxSameCategoryPositions for the given
+// symbol's category and direction. Pass all current open positions plus the symbol/side
+// that is about to be opened.
+func (at *AutoTrader) enforceMaxSameCategoryPositions(currentPositions []map[string]interface{}, symbol, side string) error {
+	if at.config.StrategyConfig == nil {
+		return nil
+	}
+	riskControl := at.config.StrategyConfig.RiskControl
+	maxSameCat := riskControl.MaxSameCategoryPositions
+	if maxSameCat <= 0 {
+		return nil // feature disabled
+	}
+	category := riskControl.GetSymbolCategory(symbol)
+	if category == "" {
+		return nil // symbol is uncategorized; skip category check
+	}
+	sameCount := 0
+	for _, p := range currentPositions {
+		posSymbol, _ := p["symbol"].(string)
+		posSide, _ := p["side"].(string)
+		if posSymbol == "" || posSide == "" {
+			continue
+		}
+		if riskControl.GetSymbolCategory(posSymbol) == category && posSide == side {
+			sameCount++
+		}
+	}
+	if sameCount >= maxSameCat {
+		return fmt.Errorf("❌ [RISK CONTROL] Max same-category positions reached: %d/%d in category '%s' (%s)", sameCount, maxSameCat, category, side)
 	}
 	return nil
 }

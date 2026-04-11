@@ -44,6 +44,11 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 		return err
 	}
 
+	// [CODE ENFORCED] Check category concentration limit
+	if err := at.enforceMaxSameCategoryPositions(positions, decision.Symbol, "long"); err != nil {
+		return err
+	}
+
 	// Check if there's already a position in the same symbol and direction
 	for _, pos := range positions {
 		if pos["symbol"] == execSymbol && pos["side"] == "long" {
@@ -159,6 +164,11 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 
 	// [CODE ENFORCED] Check max positions limit
 	if err := at.enforceMaxPositions(len(positions)); err != nil {
+		return err
+	}
+
+	// [CODE ENFORCED] Check category concentration limit
+	if err := at.enforceMaxSameCategoryPositions(positions, decision.Symbol, "short"); err != nil {
 		return err
 	}
 
