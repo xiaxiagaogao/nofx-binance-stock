@@ -140,6 +140,11 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 	posKey := decision.Symbol + "_long"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
+	// Buffer AI-assigned intent so it can be persisted once the position row exists
+	if decision.IntentType != "" || decision.EntryThesis != "" {
+		at.rememberPendingIntent(execSymbol, "long", decision.IntentType, decision.EntryThesis)
+	}
+
 	// Set stop loss and take profit
 	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
 		logger.Infof("  ⚠ Failed to set stop loss: %v", err)
@@ -262,6 +267,11 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	// Record position opening time
 	posKey := decision.Symbol + "_short"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+
+	// Buffer AI-assigned intent so it can be persisted once the position row exists
+	if decision.IntentType != "" || decision.EntryThesis != "" {
+		at.rememberPendingIntent(execSymbol, "short", decision.IntentType, decision.EntryThesis)
+	}
 
 	// Set stop loss and take profit
 	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
@@ -400,4 +410,35 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 
 	logger.Infof("  ✓ Position closed successfully")
 	return nil
+}
+
+// pendingIntentKey builds the map key used for pending position intents.
+// Uses the exchange symbol form and lowercase side to match the position
+// iteration in buildTradingContext.
+func pendingIntentKey(symbol, side string) string {
+	return symbol + "_" + side
+}
+
+// rememberPendingIntent stores an AI-assigned intent that will be persisted
+// to the trader_positions row once it becomes visible (OrderSync creates the
+// position row asynchronously on Binance).
+func (at *AutoTrader) rememberPendingIntent(symbol, side, intentType, entryThesis string) {
+	at.pendingIntentsMutex.Lock()
+	defer at.pendingIntentsMutex.Unlock()
+	at.pendingIntents[pendingIntentKey(symbol, side)] = pendingPositionIntent{
+		IntentType:  intentType,
+		EntryThesis: entryThesis,
+	}
+}
+
+// consumePendingIntent returns and removes a pending intent, if any.
+func (at *AutoTrader) consumePendingIntent(symbol, side string) (pendingPositionIntent, bool) {
+	at.pendingIntentsMutex.Lock()
+	defer at.pendingIntentsMutex.Unlock()
+	key := pendingIntentKey(symbol, side)
+	intent, ok := at.pendingIntents[key]
+	if ok {
+		delete(at.pendingIntents, key)
+	}
+	return intent, ok
 }

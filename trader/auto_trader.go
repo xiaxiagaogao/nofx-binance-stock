@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+// pendingPositionIntent buffers an AI-assigned position intent until the
+// corresponding row appears in the trader_positions table (position records
+// on Binance are created asynchronously by OrderSync).
+type pendingPositionIntent struct {
+	IntentType  string
+	EntryThesis string
+}
+
 // AutoTraderConfig auto trading configuration (simplified version - AI makes all decisions)
 type AutoTraderConfig struct {
 	// Trader identification
@@ -84,6 +92,8 @@ type AutoTrader struct {
 	startTime             time.Time          // System start time
 	callCount             int                // AI call count
 	positionFirstSeenTime map[string]int64   // Position first seen time (symbol_side -> timestamp in milliseconds)
+	pendingIntents        map[string]pendingPositionIntent // Pending position intent (symbol_side -> intent), applied once DB row exists
+	pendingIntentsMutex   sync.Mutex
 	stopMonitorCh         chan struct{}      // Used to stop monitoring goroutine
 	monitorWg             sync.WaitGroup     // Used to wait for monitoring goroutine to finish
 	peakPnLCache          map[string]float64 // Peak profit cache (symbol -> peak P&L percentage)
@@ -256,6 +266,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		callCount:             0,
 		isRunning:             false,
 		positionFirstSeenTime: make(map[string]int64),
+		pendingIntents:        make(map[string]pendingPositionIntent),
 		stopMonitorCh:         make(chan struct{}),
 		monitorWg:             sync.WaitGroup{},
 		peakPnLCache:          make(map[string]float64),

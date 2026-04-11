@@ -472,6 +472,19 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 					updateTime = dbPos.EntryTime
 				}
 				intentType = dbPos.IntentType
+
+				// Apply any pending intent buffered at open time. This is needed
+				// because position rows on Binance are created asynchronously by
+				// OrderSync, so we can't persist the intent at open time.
+				if dbPos.IntentType == "" {
+					if pending, ok := at.consumePendingIntent(symbol, side); ok {
+						if err := at.store.Position().UpdatePositionIntent(dbPos.ID, pending.IntentType, pending.EntryThesis); err != nil {
+							logger.Warnf("[%s] failed to store position intent for %s %s: %v", at.name, symbol, side, err)
+						} else {
+							intentType = pending.IntentType
+						}
+					}
+				}
 			}
 		}
 		// Priority 2: Get from exchange API (Bybit: createdTime, OKX: createdTime)
