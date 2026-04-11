@@ -30,6 +30,7 @@ type Store struct {
 	grid           *GridStore
 	aiCharge       *AIChargeStore
 	telegramConfig TelegramConfigStore
+	macroThesis    *MacroThesisStore
 
 	mu sync.RWMutex
 }
@@ -164,6 +165,9 @@ func (s *Store) initTables() error {
 	if err := s.AICharge().initTables(); err != nil {
 		return fmt.Errorf("failed to initialize AI charge tables: %w", err)
 	}
+	if err := s.MacroThesis().initTables(); err != nil {
+		return fmt.Errorf("failed to initialize macro thesis tables: %w", err)
+	}
 	return nil
 }
 
@@ -295,6 +299,16 @@ func (s *Store) AICharge() *AIChargeStore {
 		s.aiCharge = NewAIChargeStore(s.gdb)
 	}
 	return s.aiCharge
+}
+
+// MacroThesis gets macro thesis storage.
+func (s *Store) MacroThesis() *MacroThesisStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.macroThesis == nil {
+		s.macroThesis = NewMacroThesisStore(s.gdb)
+	}
+	return s.macroThesis
 }
 
 // TelegramConfig gets Telegram bot configuration storage
