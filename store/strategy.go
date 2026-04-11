@@ -283,6 +283,30 @@ type RiskControlConfig struct {
 	MinRiskRewardRatio float64 `json:"min_risk_reward_ratio"`
 	// Min AI confidence to open position (AI guided)
 	MinConfidence int `json:"min_confidence"`
+
+	// --- Stock Trading Extensions ---
+
+	// Session-based risk scaling. Keys: "us_market_open", "us_pre_market",
+	// "us_after_hours", "us_market_closed". Values are multipliers (0.0–1.0)
+	// applied to both MaxLeverage and MaxPositionValueRatio.
+	// Defaults: open=1.0, pre=0.5, after=0.3, closed=0.05
+	SessionRiskScale map[string]float64 `json:"session_risk_scale,omitempty"`
+
+	// Symbol → asset category mapping for portfolio-level correlation control.
+	// e.g. {"NVDAUSDT":"semiconductor","QQQUSDT":"index","XAUUSDT":"commodity"}
+	SymbolCategories map[string]string `json:"symbol_categories,omitempty"`
+
+	// Max concurrent open positions in the SAME category AND same direction.
+	// 0 = disabled (no category-level limit beyond MaxPositions).
+	MaxSameCategoryPositions int `json:"max_same_category_positions,omitempty"`
+
+	// Trailing stop: minimum profit % before drawdown monitor activates.
+	// Default: 0.03 (3%). Replaces old hardcoded 5%.
+	DrawdownActivationProfit float64 `json:"drawdown_activation_profit,omitempty"`
+
+	// Trailing stop: close position when it retraces this % from its peak.
+	// Default: 0.25 (25%). Replaces old hardcoded 40%.
+	DrawdownCloseThreshold float64 `json:"drawdown_close_threshold,omitempty"`
 }
 
 // EffectiveMaxLeverage returns the effective max leverage, handling backward compatibility
@@ -313,6 +337,52 @@ func (r RiskControlConfig) EffectiveMaxPositionValueRatio() float64 {
 		return r.AltcoinMaxPositionValueRatio
 	}
 	return 2.0 // default for stock trading (conservative)
+}
+
+// GetSessionRiskScale returns the risk scale factor for the given US trading session.
+// Scale is multiplied against both MaxLeverage and MaxPositionValueRatio.
+func (r RiskControlConfig) GetSessionRiskScale(session string) float64 {
+	if r.SessionRiskScale != nil {
+		if scale, ok := r.SessionRiskScale[session]; ok {
+			return scale
+		}
+	}
+	switch session {
+	case "us_market_open":
+		return 1.0
+	case "us_pre_market":
+		return 0.5
+	case "us_after_hours":
+		return 0.3
+	default: // us_market_closed, weekend
+		return 0.05
+	}
+}
+
+// GetSymbolCategory returns the asset category for a symbol (empty = uncategorized).
+func (r RiskControlConfig) GetSymbolCategory(symbol string) string {
+	if r.SymbolCategories == nil {
+		return ""
+	}
+	return r.SymbolCategories[symbol]
+}
+
+// EffectiveDrawdownActivationProfit returns the minimum profit % required before
+// the trailing stop activates. Defaults to 0.03 (3%) if not configured.
+func (r RiskControlConfig) EffectiveDrawdownActivationProfit() float64 {
+	if r.DrawdownActivationProfit > 0 {
+		return r.DrawdownActivationProfit
+	}
+	return 0.03
+}
+
+// EffectiveDrawdownCloseThreshold returns the drawdown % from peak that triggers
+// emergency close. Defaults to 0.25 (25%) if not configured.
+func (r RiskControlConfig) EffectiveDrawdownCloseThreshold() float64 {
+	if r.DrawdownCloseThreshold > 0 {
+		return r.DrawdownCloseThreshold
+	}
+	return 0.25
 }
 
 // NewStrategyStore creates a new StrategyStore
@@ -387,6 +457,30 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 			MinPositionSize:       12,   // Min 12 USDT per position (CODE ENFORCED)
 			MinRiskRewardRatio:    2.0,  // Min 2:1 profit/loss ratio (AI guided)
 			MinConfidence:         80,   // Min 80% confidence (AI guided)
+			SessionRiskScale: map[string]float64{
+				"us_market_open":   1.0,
+				"us_pre_market":    0.5,
+				"us_after_hours":   0.3,
+				"us_market_closed": 0.05,
+			},
+			SymbolCategories: map[string]string{
+				"TSLAUSDT":  "ev_auto",
+				"NVDAUSDT":  "semiconductor",
+				"XAUUSDT":   "commodity",
+				"QQQUSDT":   "index",
+				"SPYUSDT":   "index",
+				"CLUSDT":    "commodity",
+				"METAUSDT":  "tech_mega",
+				"AMAZUSDT":  "tech_mega",
+				"GOOGLUSDT": "tech_mega",
+				"INTCUSDT":  "semiconductor",
+				"MUUSDT":    "semiconductor",
+				"TSMUUSDT":  "semiconductor",
+				"SNDKUSDT":  "semiconductor",
+			},
+			MaxSameCategoryPositions: 2,
+			DrawdownActivationProfit: 0.03,
+			DrawdownCloseThreshold:   0.25,
 		},
 	}
 
