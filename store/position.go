@@ -116,8 +116,8 @@ type TraderPosition struct {
 	Status             string  `gorm:"column:status;default:OPEN;index:idx_positions_status" json:"status"`
 	CloseReason        string  `gorm:"column:close_reason;default:''" json:"close_reason"`
 	// Position intent set by AI fund manager at entry time
-	IntentType  string `gorm:"column:intent_type"`            // core_beta | tactical_alpha | hedge | opportunistic
-	EntryThesis string `gorm:"column:entry_thesis;type:text"` // AI's reasoning for entering this position
+	IntentType  string `gorm:"column:intent_type" json:"intent_type"`            // core_beta | tactical_alpha | hedge | opportunistic
+	EntryThesis string `gorm:"column:entry_thesis;type:text" json:"entry_thesis"` // AI's reasoning for entering this position
 	Source             string  `gorm:"column:source;default:system" json:"source"`
 	CreatedAt          int64   `gorm:"column:created_at" json:"created_at"`   // Unix milliseconds UTC
 	UpdatedAt          int64   `gorm:"column:updated_at" json:"updated_at"`   // Unix milliseconds UTC
@@ -507,7 +507,7 @@ func (s *PositionStore) CreateOpenPosition(pos *TraderPosition) error {
 
 // UpdatePositionIntent stores the intent type and entry thesis for an open position.
 // Called after the AI opens a new position with intent metadata.
-func (s *PositionStore) UpdatePositionIntent(positionID uint, intentType, entryThesis string) error {
+func (s *PositionStore) UpdatePositionIntent(positionID int64, intentType, entryThesis string) error {
 	result := s.db.Model(&TraderPosition{}).
 		Where("id = ?", positionID).
 		Updates(map[string]interface{}{
