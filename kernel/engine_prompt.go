@@ -10,6 +10,59 @@ import (
 )
 
 // ============================================================================
+// Fund Manager Role Definitions
+// ============================================================================
+
+const fundManagerRoleZH = `你是一位管理美股映射永续合约投资组合的AI基金经理。
+
+## 你的核心职责
+你管理的不是一笔笔独立的交易，而是一个有机的投资组合。每一个操作都必须服务于整体组合的目标：
+**在控制风险的前提下，通过 β 暴露捕获市场涨幅，通过主动管理获取超额 α。**
+
+## 决策层次
+1. **宏观判断优先**：首先评估当前宏观环境和你的市场论文（thesis）是否仍然成立。如有必要，更新你的宏观判断。
+2. **组合层面次之**：评估当前持仓的整体结构——β 暴露、板块集中度、多空方向。
+3. **个股执行最后**：在前两层框架内，决定对具体标的的操作。
+
+## 仓位类型
+- **core_beta**：核心指数仓，跟踪大盘方向（如 QQQ/SPY）。持有时间较长，杠杆较低。
+- **tactical_alpha**：战术仓，利用板块或个股的短期机会超额获利（如 NVDA 财报前布局）。
+- **hedge**：对冲仓，降低整体组合净风险（如科技多配 + 黄金多配）。
+- **opportunistic**：纯机会仓，基于明确催化剂的短线操作。
+
+## 信号优先级
+宏观/基本面信号 > 板块资金流向 > 技术面信号
+技术分析是执行参考，不是开仓的主要依据。
+
+## 关于宏观论文更新
+如果你认为当前宏观环境发生了重要变化，在你的某一个决策对象里加入 macro_thesis_update 字段来更新你的判断。每次循环最多更新一次。`
+
+const fundManagerRoleEN = `You are an AI fund manager operating a portfolio of tokenized US stock perpetual contracts.
+
+## Core Mandate
+You do not manage individual trades in isolation — you manage a living portfolio.
+Every action must serve the portfolio's dual objective:
+**Capture market beta returns while generating excess alpha through active management.**
+
+## Decision Hierarchy
+1. **Macro thesis first:** Assess whether your current market thesis still holds. Update it if material conditions have changed.
+2. **Portfolio structure second:** Evaluate the aggregate — beta exposure, sector concentration, net direction (long/short).
+3. **Individual execution last:** Within the macro + portfolio framework, decide actions on specific instruments.
+
+## Position Intent Types
+- **core_beta:** Index-tracking positions (QQQ/SPY). Longer hold, lower leverage.
+- **tactical_alpha:** Sector or single-name positions exploiting a specific catalyst or mispricing.
+- **hedge:** Positions that reduce portfolio net risk (e.g., adding XAU when long tech-heavy).
+- **opportunistic:** Short-duration, catalyst-driven positions.
+
+## Signal Priority
+Macro/fundamental signals > Sector flow signals > Technical signals.
+Technical analysis informs entry/exit timing — it is NOT the primary basis for position decisions.
+
+## Macro Thesis Updates
+If you believe a material macro shift has occurred, include a macro_thesis_update field in one of your decisions. At most one update per cycle.`
+
+// ============================================================================
 // Prompt Building - System Prompt
 // ============================================================================
 
@@ -26,13 +79,17 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("\n\n")
 	sb.WriteString("---\n\n")
 
-	// 1. Role definition (editable)
+	// 1. Role definition (editable) — defaults to AI fund manager framing
 	if promptSections.RoleDefinition != "" {
 		sb.WriteString(promptSections.RoleDefinition)
 		sb.WriteString("\n\n")
 	} else {
-		sb.WriteString("# You are a professional quantitative trading AI\n\n")
-		sb.WriteString("Your task is to make trading decisions based on provided market data. You trade tokenized stocks and quality assets on Binance.\n\n")
+		if lang == LangChinese {
+			sb.WriteString(fundManagerRoleZH)
+		} else {
+			sb.WriteString(fundManagerRoleEN)
+		}
+		sb.WriteString("\n\n")
 	}
 
 	// 2. Trading mode variant
@@ -131,6 +188,26 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
 	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
+
+	// Fund manager optional fields
+	sb.WriteString("## Optional Fund Manager Fields (include when relevant)\n\n")
+	sb.WriteString("```json\n")
+	sb.WriteString("{\n")
+	sb.WriteString("  \"intent_type\": \"core_beta | tactical_alpha | hedge | opportunistic\",\n")
+	sb.WriteString("  \"entry_thesis\": \"why you are entering this specific position\",\n")
+	sb.WriteString("  \"macro_thesis_update\": {          // include AT MOST ONCE per cycle\n")
+	sb.WriteString("    \"market_regime\": \"risk_on | risk_off | mixed | cautious\",\n")
+	sb.WriteString("    \"thesis_text\": \"your updated macro view\",\n")
+	sb.WriteString("    \"sector_bias\": {\"semiconductor\": \"bullish\", \"index\": \"neutral\"},\n")
+	sb.WriteString("    \"key_risks\": [\"risk1\", \"risk2\"],\n")
+	sb.WriteString("    \"portfolio_intent\": \"building_tech_long\",\n")
+	sb.WriteString("    \"valid_hours\": 24\n")
+	sb.WriteString("  }\n")
+	sb.WriteString("}\n")
+	sb.WriteString("```\n\n")
+	sb.WriteString("- `intent_type` tags the position so the portfolio layer can track beta vs alpha vs hedge allocation.\n")
+	sb.WriteString("- `entry_thesis` is a 1-2 sentence rationale that will be persisted with the position.\n")
+	sb.WriteString("- `macro_thesis_update` is how you update your standing macro view. Only include when a material shift has occurred.\n\n")
 
 	// 8. Custom Prompt
 	if e.config.CustomPrompt != "" {
@@ -236,6 +313,67 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 		sb.WriteString("⚠️ After-hours session: Low liquidity. Prefer position management over new entries. Avoid aggressive trades.\n")
 	case "us_market_closed":
 		sb.WriteString("⚠️ Market closed: Tokenized stocks may still trade but with minimal price discovery. Strongly prefer hold/wait.\n")
+	}
+	sb.WriteString("\n")
+
+	// --- Macro Context (Fund Manager Layer) ---
+	if ctx.MacroThesis != nil {
+		th := ctx.MacroThesis
+		staleNote := ""
+		if th.AgeHours > 24 {
+			staleNote = fmt.Sprintf(" [⚠️ STALE — %.0fh old, consider updating]", th.AgeHours)
+		}
+		sb.WriteString(fmt.Sprintf("## 当前宏观论文 (%.1fh ago, source: %s)%s\n", th.AgeHours, th.Source, staleNote))
+		if th.MarketRegime != "" {
+			sb.WriteString(fmt.Sprintf("市场环境: %s\n", th.MarketRegime))
+		}
+		if th.ThesisText != "" {
+			sb.WriteString(fmt.Sprintf("论文: %s\n", th.ThesisText))
+		}
+		if th.PortfolioIntent != "" {
+			sb.WriteString(fmt.Sprintf("组合意图: %s\n", th.PortfolioIntent))
+		}
+		if len(th.SectorBias) > 0 {
+			sb.WriteString("板块偏向:\n")
+			for sector, bias := range th.SectorBias {
+				sb.WriteString(fmt.Sprintf("  - %s: %s\n", sector, bias))
+			}
+		}
+		if len(th.KeyRisks) > 0 {
+			sb.WriteString("关键风险:\n")
+			for _, r := range th.KeyRisks {
+				sb.WriteString(fmt.Sprintf("  - %s\n", r))
+			}
+		}
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("## 宏观论文\n尚无宏观论文。请在本次决策中通过 macro_thesis_update 建立你的初始判断。\n\n")
+	}
+
+	if ctx.MacroReport != "" {
+		sb.WriteString("## 外部宏观报告（用户提供，高优先级参考）\n")
+		sb.WriteString(ctx.MacroReport)
+		sb.WriteString("\n\n")
+	}
+
+	if ctx.PortfolioExposure != nil {
+		pe := ctx.PortfolioExposure
+		sb.WriteString(fmt.Sprintf("## 当前组合暴露\n方向: %s (多头: $%.0f | 空头: $%.0f)\n",
+			pe.NetDirection, pe.NetLongUSD, pe.NetShortUSD))
+		sb.WriteString(fmt.Sprintf("核心β仓: $%.0f | 战术α仓: $%.0f | 对冲仓: $%.0f\n",
+			pe.CoreBetaUSD, pe.TacticalAlphaUSD, pe.HedgeUSD))
+		if len(pe.CategoryBreakdown) > 0 {
+			sb.WriteString("板块分布:\n")
+			for cat, usd := range pe.CategoryBreakdown {
+				sb.WriteString(fmt.Sprintf("  - %s: $%.0f\n", cat, usd))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString(fmt.Sprintf("## 当前交易时段风险系数: %.2f\n", ctx.SessionScaleFactor))
+	if ctx.SessionScaleFactor > 0 && ctx.SessionScaleFactor < 0.5 {
+		sb.WriteString("⚠️ 低流动性时段：建议减小仓位规模，避免开新的主要仓位。\n")
 	}
 	sb.WriteString("\n")
 
