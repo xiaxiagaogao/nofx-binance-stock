@@ -38,7 +38,7 @@ export function CoinSourceEditor({
     return xyzDexAssets.has(base)
   }
 
-  const MAX_STATIC_COINS = 10
+  const MAX_STATIC_COINS = 20
 
   const showToast = (msg: string) => {
     const toast = document.createElement('div')
