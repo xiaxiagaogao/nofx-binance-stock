@@ -5,6 +5,8 @@ import type {
   DecisionRecord,
   Statistics,
   PositionHistoryResponse,
+  MacroThesis,
+  FundManagerOverview,
 } from '../../types'
 import { API_BASE, httpClient } from './helpers'
 
@@ -110,6 +112,22 @@ export const dataApi = {
       `${API_BASE}/positions/history?trader_id=${traderId}&limit=${limit}`
     )
     if (!result.success) throw new Error('Failed to fetch position history')
+    return result.data!
+  },
+
+  async getMacroThesis(traderId: string): Promise<{ thesis: MacroThesis | null }> {
+    const result = await httpClient.get<{ thesis: MacroThesis | null }>(
+      `${API_BASE}/macro-thesis?trader_id=${traderId}`
+    )
+    if (!result.success) throw new Error('Failed to fetch macro thesis')
+    return result.data!
+  },
+
+  async getPortfolioExposure(traderId: string): Promise<FundManagerOverview> {
+    const result = await httpClient.get<FundManagerOverview>(
+      `${API_BASE}/portfolio-exposure?trader_id=${traderId}`
+    )
+    if (!result.success) throw new Error('Failed to fetch portfolio exposure')
     return result.data!
   },
 }

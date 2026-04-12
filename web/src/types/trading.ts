@@ -40,6 +40,8 @@ export interface Position {
   unrealized_pnl_pct: number
   liquidation_price: number
   margin_used: number
+  intent_type?: string
+  entry_thesis?: string
 }
 
 export interface DecisionAction {
@@ -56,6 +58,8 @@ export interface DecisionAction {
   timestamp: string
   success: boolean
   error?: string
+  intent_type?: string
+  entry_thesis?: string
 }
 
 export interface AccountSnapshot {
@@ -152,6 +156,8 @@ export interface HistoricalPosition {
   close_reason: string
   created_at: string
   updated_at: string
+  intent_type?: string
+  entry_thesis?: string
 }
 
 // Matches Go TraderStats struct exactly
@@ -227,4 +233,35 @@ export interface GridRiskInfo {
   // Breakout state
   breakout_level: string
   breakout_direction: string
+}
+
+export interface MacroThesis {
+  id: number
+  market_regime: string
+  thesis_text: string
+  sector_bias: Record<string, string>
+  key_risks: string[]
+  portfolio_intent: string
+  valid_hours: number
+  source: string
+  age_hours: number
+  is_stale: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface PortfolioExposure {
+  category_breakdown: Record<string, number>
+  net_long_usd: number
+  net_short_usd: number
+  net_direction: string
+  core_beta_usd: number
+  tactical_alpha_usd: number
+  hedge_usd: number
+}
+
+export interface FundManagerOverview {
+  exposure: PortfolioExposure | null
+  session: string
+  session_scale_factor: number
 }

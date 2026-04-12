@@ -75,6 +75,22 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
           >
             {config.label}
           </span>
+          {action.intent_type && (
+            <span
+              className="px-2 py-0.5 rounded-full text-[10px] font-mono"
+              style={{
+                background: action.intent_type === 'core_beta' ? 'rgba(240,185,11,0.15)' :
+                            action.intent_type === 'tactical_alpha' ? 'rgba(14,203,129,0.15)' :
+                            action.intent_type === 'hedge' ? 'rgba(132,142,156,0.15)' :
+                            'rgba(246,70,93,0.15)',
+                color: action.intent_type === 'core_beta' ? '#F0B90B' :
+                       action.intent_type === 'tactical_alpha' ? '#0ECB81' :
+                       action.intent_type === 'hedge' ? '#848E9C' : '#F6465D',
+              }}
+            >
+              {action.intent_type}
+            </span>
+          )}
         </div>
 
         {/* Status Badge */}
@@ -188,6 +204,14 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
               )
             })()}
           </div>
+        </div>
+      )}
+
+      {/* Entry Thesis */}
+      {action.entry_thesis && (
+        <div className="mt-2 pt-2 text-xs" style={{ borderTop: '1px solid #2B3139' }}>
+          <span className="text-nofx-text-muted mr-1">{t('fundManager.thesis', language)}:</span>
+          <span className="text-nofx-text-main">{action.entry_thesis}</span>
         </div>
       )}
 

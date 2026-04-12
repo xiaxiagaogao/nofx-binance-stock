@@ -12,6 +12,8 @@ import { LogOut, Loader2, Eye, EyeOff, Copy, Check } from 'lucide-react'
 import { DeepVoidBackground } from '../components/common/DeepVoidBackground'
 import { NofxSelect } from '../components/ui/select'
 import { GridRiskPanel } from '../components/strategy/GridRiskPanel'
+import { MacroThesisPanel } from '../components/trader/MacroThesisPanel'
+import { PortfolioExposureBar } from '../components/trader/PortfolioExposureBar'
 import type {
     SystemStatus,
     AccountInfo,
@@ -575,6 +577,14 @@ export function TraderDashboardPage({
                             />
                         </div>
 
+                        {/* Fund Manager Overview */}
+                        {selectedTrader?.trader_id && (
+                          <div className="space-y-3 mb-6">
+                            <PortfolioExposureBar traderId={selectedTrader.trader_id} language={language} />
+                            <MacroThesisPanel traderId={selectedTrader.trader_id} language={language} />
+                          </div>
+                        )}
+
                         {/* Current Positions */}
                         <div
                             className="nofx-glass p-6 animate-slide-in relative overflow-hidden group"
@@ -636,6 +646,25 @@ export function TraderDashboardPage({
                                                             >
                                                                 {t(pos.side === 'long' ? 'long' : 'short', language)}
                                                             </span>
+                                                            {pos.intent_type && (
+                                                              <span
+                                                                className="ml-1 px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider"
+                                                                style={{
+                                                                  background: pos.intent_type === 'core_beta' ? 'rgba(240,185,11,0.15)' :
+                                                                              pos.intent_type === 'tactical_alpha' ? 'rgba(14,203,129,0.15)' :
+                                                                              pos.intent_type === 'hedge' ? 'rgba(132,142,156,0.15)' :
+                                                                              'rgba(246,70,93,0.15)',
+                                                                  color: pos.intent_type === 'core_beta' ? '#F0B90B' :
+                                                                         pos.intent_type === 'tactical_alpha' ? '#0ECB81' :
+                                                                         pos.intent_type === 'hedge' ? '#848E9C' : '#F6465D',
+                                                                }}
+                                                                title={pos.entry_thesis || pos.intent_type}
+                                                              >
+                                                                {pos.intent_type === 'core_beta' ? '\u03B2' :
+                                                                 pos.intent_type === 'tactical_alpha' ? '\u03B1' :
+                                                                 pos.intent_type === 'hedge' ? 'H' : '\u26A1'}
+                                                              </span>
+                                                            )}
                                                         </td>
                                                         <td className="px-1 py-3 whitespace-nowrap text-center">
                                                             <button
