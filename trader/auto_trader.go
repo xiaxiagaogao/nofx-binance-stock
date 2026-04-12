@@ -436,6 +436,15 @@ func (at *AutoTrader) GetStore() *store.Store {
 	return at.store
 }
 
+// GetStrategyConfig returns the trader's current strategy configuration.
+// Returns nil if no strategy engine is configured.
+func (at *AutoTrader) GetStrategyConfig() *store.StrategyConfig {
+	if at.strategyEngine != nil {
+		return at.strategyEngine.GetConfig()
+	}
+	return nil
+}
+
 // calculatePnLPercentage calculates P&L percentage (based on margin, automatically considers leverage)
 // Return rate = Unrealized P&L / Margin x 100%
 func calculatePnLPercentage(unrealizedPnl, marginUsed float64) float64 {

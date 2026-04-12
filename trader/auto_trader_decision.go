@@ -221,7 +221,7 @@ func (at *AutoTrader) GetPositions() ([]map[string]interface{}, error) {
 		// Calculate P&L percentage (based on margin)
 		pnlPct := calculatePnLPercentage(unrealizedPnl, marginUsed)
 
-		result = append(result, map[string]interface{}{
+		posMap := map[string]interface{}{
 			"symbol":             symbol,
 			"side":               side,
 			"entry_price":        entryPrice,
@@ -232,7 +232,21 @@ func (at *AutoTrader) GetPositions() ([]map[string]interface{}, error) {
 			"unrealized_pnl_pct": pnlPct,
 			"liquidation_price":  liquidationPrice,
 			"margin_used":        marginUsed,
-		})
+		}
+
+		// Enrich with intent_type and entry_thesis from DB if available
+		if at.store != nil {
+			if dbPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, symbol, side); err == nil && dbPos != nil {
+				if dbPos.IntentType != "" {
+					posMap["intent_type"] = dbPos.IntentType
+				}
+				if dbPos.EntryThesis != "" {
+					posMap["entry_thesis"] = dbPos.EntryThesis
+				}
+			}
+		}
+
+		result = append(result, posMap)
 	}
 
 	return result, nil

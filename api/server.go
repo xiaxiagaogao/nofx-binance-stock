@@ -352,6 +352,20 @@ Returns the most recent AI decision for each symbol analyzed in the last scan cy
 Returns: {"total_trades":<int>,"winning_trades":<int>,"win_rate":<float>,"total_pnl":<float>,"sharpe_ratio":<float>,"max_drawdown":<float>}`,
 				s.handleStatistics)
 
+			// Fund Manager endpoints
+			s.routeWithSchema(protected, "GET", "/macro-thesis", "Get current macro thesis",
+				`Query: ?trader_id=<EXACT trader_id from GET /api/my-traders>
+Returns: {"thesis":{...}} or {"thesis":null}`,
+				s.handleMacroThesis)
+			s.routeWithSchema(protected, "POST", "/macro-thesis", "Push a manual macro thesis",
+				`Query: ?trader_id=<EXACT trader_id from GET /api/my-traders>
+Body: {"market_regime":"risk_on|risk_off|mixed|cautious","thesis_text":"...","sector_bias":{"semiconductor":"bullish"},"key_risks":["..."],"portfolio_intent":"...","valid_hours":24}`,
+				s.handleCreateMacroThesis)
+			s.routeWithSchema(protected, "GET", "/portfolio-exposure", "Portfolio exposure and session info",
+				`Query: ?trader_id=<EXACT trader_id from GET /api/my-traders>
+Returns: {"exposure":{...},"session":"us_market_open|...","session_scale_factor":1.0}`,
+				s.handlePortfolioExposure)
+
 		}
 	}
 }
