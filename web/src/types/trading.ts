@@ -235,6 +235,11 @@ export interface GridRiskInfo {
   breakout_direction: string
 }
 
+export interface CompetitionTraderData {
+  trader_id: string
+  trader_name: string
+}
+
 export interface MacroThesis {
   id: number
   market_regime: string

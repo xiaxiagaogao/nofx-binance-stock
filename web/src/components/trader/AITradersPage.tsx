@@ -756,9 +756,12 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     setShowExchangeModal(true)
   }
 
-  const hasStrategies = (strategies?.length || 0) > 0
-  const hasCreatedTrader = (traders?.length || 0) > 0
-  const canCreateTrader = configuredModels.length > 0 && configuredExchanges.length > 0
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const hasStrategies = (strategies?.length || 0) > 0; void hasStrategies
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const hasCreatedTrader = (traders?.length || 0) > 0; void hasCreatedTrader
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const canCreateTrader = configuredModels.length > 0 && configuredExchanges.length > 0; void canCreateTrader
 
   return (
     <DeepVoidBackground className="py-8" disableAnimation>
