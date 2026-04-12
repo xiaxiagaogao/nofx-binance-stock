@@ -3833,12 +3833,17 @@ export function t(
   lang: Language,
   params?: Record<string, string | number>
 ): string {
-  // Handle nested keys like 'twoStageKey.title'
-  const keys = key.split('.')
-  let value: any = translations[lang]
+  // First try flat key lookup (handles keys like 'fundManager.macroThesis')
+  const langMap = translations[lang] as Record<string, any>
+  let value: any = langMap[key]
 
-  for (const k of keys) {
-    value = value?.[k]
+  // Fallback: handle nested keys like 'twoStageKey.title'
+  if (value === undefined && key.includes('.')) {
+    const keys = key.split('.')
+    value = langMap
+    for (const k of keys) {
+      value = value?.[k]
+    }
   }
 
   let text = typeof value === 'string' ? value : key
