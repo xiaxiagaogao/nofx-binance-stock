@@ -62,11 +62,13 @@ func (c *Client) GetTopRatedCoins(limit int) ([]string, error) {
 
 // OIPositionItem represents a single OI position entry
 type OIPositionItem struct {
-	Symbol       string  `json:"symbol"`
-	OI           float64 `json:"oi"`
-	OIDelta      float64 `json:"oi_delta"`
-	OIDeltaValue float64 `json:"oi_delta_value"`
-	OIDeltaPct   float64 `json:"oi_delta_percent"`
+	Symbol            string  `json:"symbol"`
+	Rank              int     `json:"rank"`
+	OI                float64 `json:"oi"`
+	OIDelta           float64 `json:"oi_delta"`
+	OIDeltaValue      float64 `json:"oi_delta_value"`
+	OIDeltaPercent    float64 `json:"oi_delta_percent"`
+	PriceDeltaPercent float64 `json:"price_delta_percent"`
 }
 
 // OIPositionsResponse is the API response for OI positions
