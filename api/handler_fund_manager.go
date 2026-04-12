@@ -158,7 +158,7 @@ func (s *Server) handlePortfolioExposure(c *gin.Context) {
 	}
 	// Fill defaults if no config
 	if riskConfig.SymbolCategories == nil {
-		defaults := store.GetDefaultStrategyConfig()
+		defaults := store.GetDefaultStrategyConfig("en")
 		riskConfig.SymbolCategories = defaults.RiskControl.SymbolCategories
 	}
 
