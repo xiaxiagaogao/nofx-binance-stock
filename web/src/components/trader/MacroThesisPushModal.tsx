@@ -19,12 +19,12 @@ const INTENT_OPTIONS = [
 ]
 const SECTOR_OPTIONS = [
   'semiconductor',
+  'tech_mega',
   'index',
   'ev_auto',
-  'commodity',
-  'tech_mega',
-  'finance',
+  'safe_haven',
   'energy',
+  'finance',
 ]
 const BIAS_OPTIONS = ['bullish', 'bearish', 'neutral']
 

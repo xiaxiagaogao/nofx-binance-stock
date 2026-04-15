@@ -80,11 +80,11 @@ export const translations = {
 
     // Sector labels
     'sector.semiconductor': 'Semiconductor',
-    'sector.index': 'Index',
+    'sector.index': 'Index / ETF',
     'sector.ev_auto': 'EV / Auto',
-    'sector.commodity': 'Commodity',
     'sector.tech_mega': 'Tech Mega Cap',
     'sector.finance': 'Finance',
+    'sector.safe_haven': 'Safe Haven',
     'sector.energy': 'Energy',
 
     // Bias labels
@@ -1495,11 +1495,11 @@ export const translations = {
 
     // Sector labels
     'sector.semiconductor': '半导体',
-    'sector.index': '指数',
+    'sector.index': '指数 / ETF',
     'sector.ev_auto': '电动车',
-    'sector.commodity': '大宗商品',
     'sector.tech_mega': '科技龙头',
     'sector.finance': '金融',
+    'sector.safe_haven': '避险资产',
     'sector.energy': '能源',
 
     // Bias labels
@@ -2850,11 +2850,11 @@ export const translations = {
 
     // Sector labels
     'sector.semiconductor': 'Semikonduktor',
-    'sector.index': 'Indeks',
+    'sector.index': 'Indeks / ETF',
     'sector.ev_auto': 'EV / Otomotif',
-    'sector.commodity': 'Komoditas',
     'sector.tech_mega': 'Tech Mega Cap',
     'sector.finance': 'Keuangan',
+    'sector.safe_haven': 'Safe Haven',
     'sector.energy': 'Energi',
 
     // Bias labels

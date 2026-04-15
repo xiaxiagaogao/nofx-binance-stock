@@ -360,11 +360,31 @@ func (r RiskControlConfig) GetSessionRiskScale(session string) float64 {
 }
 
 // GetSymbolCategory returns the asset category for a symbol (empty = uncategorized).
+// Handles both Binance USDT format ("METAUSDT") and internal xyz: format ("xyz:META").
 func (r RiskControlConfig) GetSymbolCategory(symbol string) string {
 	if r.SymbolCategories == nil {
 		return ""
 	}
-	return r.SymbolCategories[symbol]
+	// Direct lookup
+	if cat, ok := r.SymbolCategories[symbol]; ok {
+		return cat
+	}
+	// Normalize xyz: internal format → Binance USDT key, e.g. "xyz:META" → "METAUSDT"
+	upper := strings.ToUpper(symbol)
+	if strings.HasPrefix(upper, "XYZ:") {
+		usdtKey := upper[4:] + "USDT"
+		if cat, ok := r.SymbolCategories[usdtKey]; ok {
+			return cat
+		}
+	}
+	// Normalize USDT format → xyz: key, e.g. "METAUSDT" → "xyz:META"
+	if strings.HasSuffix(upper, "USDT") {
+		xyzKey := "xyz:" + strings.TrimSuffix(upper, "USDT")
+		if cat, ok := r.SymbolCategories[xyzKey]; ok {
+			return cat
+		}
+	}
+	return ""
 }
 
 // EffectiveDrawdownActivationProfit returns the minimum profit % required before
@@ -464,19 +484,27 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 				"us_market_closed": 0.05,
 			},
 			SymbolCategories: map[string]string{
+				// EV / Auto
 				"TSLAUSDT":  "ev_auto",
+				// Semiconductor
 				"NVDAUSDT":  "semiconductor",
-				"XAUUSDT":   "commodity",
-				"QQQUSDT":   "index",
-				"SPYUSDT":   "index",
-				"CLUSDT":    "commodity",
-				"METAUSDT":  "tech_mega",
-				"AMAZUSDT":  "tech_mega",
-				"GOOGLUSDT": "tech_mega",
 				"INTCUSDT":  "semiconductor",
 				"MUUSDT":    "semiconductor",
-				"TSMUUSDT":  "semiconductor",
 				"SNDKUSDT":  "semiconductor",
+				"TSMUSDT":   "semiconductor", // xyz:TSM → TSMUSDT
+				// Tech Mega Cap
+				"APPLUSDT":  "tech_mega",     // Apple (Binance uses APPL not AAPL)
+				"METAUSDT":  "tech_mega",
+				"GOOGLUSDT": "tech_mega",
+				"AMZNUSDT":  "tech_mega",     // xyz:AMZN → AMZNUSDT (was wrong AMAZUSDT)
+				// Index / ETF
+				"QQQUSDT":   "index",
+				"SPYUSDT":   "index",
+				"EWYUSDT":   "index",         // iShares MSCI South Korea ETF
+				// Safe Haven (split from commodity)
+				"XAUUSDT":   "safe_haven",
+				// Energy
+				"CLUSDT":    "energy",        // Crude Oil (was commodity)
 			},
 			MaxSameCategoryPositions: 2,
 			DrawdownActivationProfit: 0.03,
