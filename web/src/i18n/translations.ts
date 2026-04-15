@@ -65,6 +65,33 @@ export const translations = {
     'fundManager.thesisPlaceholder': 'Describe your macro view, market context, and key observations...',
     'fundManager.keyRisksPlaceholder': 'e.g. Fed rate surprise\nGeopolitical escalation',
 
+    // Regime labels
+    'regime.risk_on': 'Risk On',
+    'regime.risk_off': 'Risk Off',
+    'regime.cautious': 'Cautious',
+    'regime.neutral': 'Neutral',
+
+    // Portfolio intent labels
+    'intent.aggressive_long': 'Aggressive Long',
+    'intent.selective_long': 'Selective Long',
+    'intent.preserve_cash': 'Preserve Cash',
+    'intent.reduce_exposure': 'Reduce Exposure',
+    'intent.defensive': 'Defensive',
+
+    // Sector labels
+    'sector.semiconductor': 'Semiconductor',
+    'sector.index': 'Index',
+    'sector.ev_auto': 'EV / Auto',
+    'sector.commodity': 'Commodity',
+    'sector.tech_mega': 'Tech Mega Cap',
+    'sector.finance': 'Finance',
+    'sector.energy': 'Energy',
+
+    // Bias labels
+    'bias.bullish': 'Bullish',
+    'bias.bearish': 'Bearish',
+    'bias.neutral': 'Neutral',
+
     // Positions Table
     currentPositions: 'Current Positions',
     active: 'Active',
@@ -1453,6 +1480,33 @@ export const translations = {
     'fundManager.thesisPlaceholder': '描述你的宏观判断、市场环境和关键观察...',
     'fundManager.keyRisksPlaceholder': '例：美联储意外加息\n地缘冲突升级',
 
+    // Regime labels
+    'regime.risk_on': '做多偏向',
+    'regime.risk_off': '避险模式',
+    'regime.cautious': '谨慎观望',
+    'regime.neutral': '中性',
+
+    // Portfolio intent labels
+    'intent.aggressive_long': '积极做多',
+    'intent.selective_long': '精选做多',
+    'intent.preserve_cash': '保留现金',
+    'intent.reduce_exposure': '降低敞口',
+    'intent.defensive': '防御模式',
+
+    // Sector labels
+    'sector.semiconductor': '半导体',
+    'sector.index': '指数',
+    'sector.ev_auto': '电动车',
+    'sector.commodity': '大宗商品',
+    'sector.tech_mega': '科技龙头',
+    'sector.finance': '金融',
+    'sector.energy': '能源',
+
+    // Bias labels
+    'bias.bullish': '看多',
+    'bias.bearish': '看空',
+    'bias.neutral': '中性',
+
     // Positions Table
     currentPositions: '当前持仓',
     active: '活跃',
@@ -2780,6 +2834,33 @@ export const translations = {
     'fundManager.thesisRequired': 'Teks thesis diperlukan',
     'fundManager.thesisPlaceholder': 'Jelaskan pandangan makro, konteks pasar, dan observasi utama...',
     'fundManager.keyRisksPlaceholder': 'contoh: Kejutan suku bunga Fed\nEskalasi geopolitik',
+
+    // Regime labels
+    'regime.risk_on': 'Risk On',
+    'regime.risk_off': 'Risk Off',
+    'regime.cautious': 'Hati-hati',
+    'regime.neutral': 'Netral',
+
+    // Portfolio intent labels
+    'intent.aggressive_long': 'Long Agresif',
+    'intent.selective_long': 'Long Selektif',
+    'intent.preserve_cash': 'Simpan Cash',
+    'intent.reduce_exposure': 'Kurangi Eksposur',
+    'intent.defensive': 'Defensif',
+
+    // Sector labels
+    'sector.semiconductor': 'Semikonduktor',
+    'sector.index': 'Indeks',
+    'sector.ev_auto': 'EV / Otomotif',
+    'sector.commodity': 'Komoditas',
+    'sector.tech_mega': 'Tech Mega Cap',
+    'sector.finance': 'Keuangan',
+    'sector.energy': 'Energi',
+
+    // Bias labels
+    'bias.bullish': 'Bullish',
+    'bias.bearish': 'Bearish',
+    'bias.neutral': 'Netral',
 
     // Positions Table
     currentPositions: 'Posisi Saat Ini',

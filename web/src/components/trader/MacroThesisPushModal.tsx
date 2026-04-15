@@ -152,7 +152,7 @@ export function MacroThesisPushModal({
                 }}
               >
                 {REGIME_OPTIONS.map(r => (
-                  <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>
+                  <option key={r} value={r}>{t(`regime.${r}`, language)}</option>
                 ))}
               </select>
             </div>
@@ -170,7 +170,7 @@ export function MacroThesisPushModal({
                 }}
               >
                 {INTENT_OPTIONS.map(i => (
-                  <option key={i} value={i}>{i.replace(/_/g, ' ')}</option>
+                  <option key={i} value={i}>{t(`intent.${i}`, language)}</option>
                 ))}
               </select>
             </div>
@@ -188,7 +188,7 @@ export function MacroThesisPushModal({
               {SECTOR_OPTIONS.map(sector => (
                 <div key={sector} className="flex items-center gap-2">
                   <span className="text-[11px] text-nofx-text-secondary w-24 shrink-0">
-                    {sector}
+                    {t(`sector.${sector}`, language)}
                   </span>
                   <select
                     value={sectorBias[sector] || ''}
@@ -201,7 +201,7 @@ export function MacroThesisPushModal({
                   >
                     <option value="">—</option>
                     {BIAS_OPTIONS.map(b => (
-                      <option key={b} value={b}>{b}</option>
+                      <option key={b} value={b}>{t(`bias.${b}`, language)}</option>
                     ))}
                   </select>
                 </div>
