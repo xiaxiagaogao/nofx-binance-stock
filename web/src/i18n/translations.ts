@@ -55,6 +55,15 @@ export const translations = {
     'fundManager.session': 'Session',
     'fundManager.riskScale': 'Risk Scale',
     'fundManager.intentType': 'Intent',
+    'fundManager.push': 'Push',
+    'fundManager.pushThesis': 'Push Macro Thesis',
+    'fundManager.cancel': 'Cancel',
+    'fundManager.validHours': 'Valid for',
+    'fundManager.optional': 'optional',
+    'fundManager.onePerLine': 'one per line',
+    'fundManager.thesisRequired': 'Thesis text is required',
+    'fundManager.thesisPlaceholder': 'Describe your macro view, market context, and key observations...',
+    'fundManager.keyRisksPlaceholder': 'e.g. Fed rate surprise\nGeopolitical escalation',
 
     // Positions Table
     currentPositions: 'Current Positions',
@@ -1434,6 +1443,15 @@ export const translations = {
     'fundManager.session': '时段',
     'fundManager.riskScale': '风险系数',
     'fundManager.intentType': '意图',
+    'fundManager.push': '推送',
+    'fundManager.pushThesis': '推送宏观研报',
+    'fundManager.cancel': '取消',
+    'fundManager.validHours': '有效时长',
+    'fundManager.optional': '可选',
+    'fundManager.onePerLine': '每行一条',
+    'fundManager.thesisRequired': '请填写宏观论文内容',
+    'fundManager.thesisPlaceholder': '描述你的宏观判断、市场环境和关键观察...',
+    'fundManager.keyRisksPlaceholder': '例：美联储意外加息\n地缘冲突升级',
 
     // Positions Table
     currentPositions: '当前持仓',
@@ -2753,6 +2771,15 @@ export const translations = {
     'fundManager.session': 'Session',
     'fundManager.riskScale': 'Risk Scale',
     'fundManager.intentType': 'Intent',
+    'fundManager.push': 'Kirim',
+    'fundManager.pushThesis': 'Kirim Macro Thesis',
+    'fundManager.cancel': 'Batal',
+    'fundManager.validHours': 'Berlaku selama',
+    'fundManager.optional': 'opsional',
+    'fundManager.onePerLine': 'satu per baris',
+    'fundManager.thesisRequired': 'Teks thesis diperlukan',
+    'fundManager.thesisPlaceholder': 'Jelaskan pandangan makro, konteks pasar, dan observasi utama...',
+    'fundManager.keyRisksPlaceholder': 'contoh: Kejutan suku bunga Fed\nEskalasi geopolitik',
 
     // Positions Table
     currentPositions: 'Posisi Saat Ini',

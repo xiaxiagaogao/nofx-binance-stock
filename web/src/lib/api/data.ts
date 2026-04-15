@@ -130,4 +130,20 @@ export const dataApi = {
     if (!result.success) throw new Error('Failed to fetch portfolio exposure')
     return result.data!
   },
+
+  async postMacroThesis(traderId: string, payload: {
+    thesis_text: string
+    market_regime?: string
+    portfolio_intent?: string
+    sector_bias?: Record<string, string>
+    key_risks?: string[]
+    valid_hours?: number
+  }): Promise<{ success: boolean; id: number }> {
+    const result = await httpClient.post<{ success: boolean; id: number }>(
+      `${API_BASE}/macro-thesis?trader_id=${traderId}`,
+      payload
+    )
+    if (!result.success) throw new Error('Failed to push macro thesis')
+    return result.data!
+  },
 }
