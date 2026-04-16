@@ -297,8 +297,14 @@ type RiskControlConfig struct {
 	SymbolCategories map[string]string `json:"symbol_categories,omitempty"`
 
 	// Max concurrent open positions in the SAME category AND same direction.
+	// Used as the global fallback when CategoryMaxPositions doesn't specify a category.
 	// 0 = disabled (no category-level limit beyond MaxPositions).
 	MaxSameCategoryPositions int `json:"max_same_category_positions,omitempty"`
+
+	// Per-category max positions override (same direction).
+	// e.g. {"index":3,"semiconductor":2,"tech_mega":2,"ev_auto":1}
+	// If a category is not listed here, MaxSameCategoryPositions is used as fallback.
+	CategoryMaxPositions map[string]int `json:"category_max_positions,omitempty"`
 
 	// Trailing stop: minimum profit % before drawdown monitor activates.
 	// Default: 0.03 (3%). Replaces old hardcoded 5%.
@@ -385,6 +391,18 @@ func (r RiskControlConfig) GetSymbolCategory(symbol string) string {
 		}
 	}
 	return ""
+}
+
+// GetCategoryMaxPositions returns the per-category same-direction position limit.
+// Looks up CategoryMaxPositions first; falls back to MaxSameCategoryPositions.
+// Returns 0 if both are unset (feature disabled).
+func (r RiskControlConfig) GetCategoryMaxPositions(category string) int {
+	if r.CategoryMaxPositions != nil {
+		if max, ok := r.CategoryMaxPositions[category]; ok {
+			return max
+		}
+	}
+	return r.MaxSameCategoryPositions
 }
 
 // EffectiveDrawdownActivationProfit returns the minimum profit % required before
@@ -506,7 +524,15 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 				// Energy
 				"CLUSDT":    "energy",        // Crude Oil (was commodity)
 			},
-			MaxSameCategoryPositions: 2,
+			MaxSameCategoryPositions: 1, // fallback for uncategorized symbols
+			CategoryMaxPositions: map[string]int{
+				"semiconductor": 2,
+				"tech_mega":     2,
+				"index":         3,
+				"ev_auto":       1,
+				"safe_haven":    1,
+				"energy":        1,
+			},
 			DrawdownActivationProfit: 0.03,
 			DrawdownCloseThreshold:   0.25,
 		},

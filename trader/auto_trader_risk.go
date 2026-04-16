@@ -255,13 +255,13 @@ func (at *AutoTrader) enforceMaxSameCategoryPositions(currentPositions []map[str
 		return nil
 	}
 	riskControl := at.config.StrategyConfig.RiskControl
-	maxSameCat := riskControl.MaxSameCategoryPositions
-	if maxSameCat <= 0 {
-		return nil // feature disabled
-	}
 	category := riskControl.GetSymbolCategory(symbol)
 	if category == "" {
 		return nil // symbol is uncategorized; skip category check
+	}
+	maxSameCat := riskControl.GetCategoryMaxPositions(category)
+	if maxSameCat <= 0 {
+		return nil // feature disabled for this category
 	}
 	sameCount := 0
 	for _, p := range currentPositions {
