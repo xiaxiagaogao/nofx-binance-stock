@@ -2,7 +2,7 @@
 
 > 来源：EC2 `13.114.103.175` `/root/stacks/nofx/data/data.db`
 > 策略 ID：`5e5f498a-6fe0-4acb-88bf-069c491042e0`
-> 更新时间：`2026-04-07T07:06:03`
+> 更新时间：`2026-04-12 13:51:48.291426558+00:00`
 
 ---
 
@@ -32,7 +32,7 @@ python3 restore_strategy.py
 | 主要周期 | 1h |
 | 较长周期 | 4h |
 | 辅助周期 | 1h / 4h / 1d |
-| 标的 | TSLAUSDT / NVDAUSDT / XAUUSDT / QQQUSDT / SPYUSDT / xyz:AAPL |
+| 标的 | TSLAUSDT / NVDAUSDT / XAUUSDT / QQQUSDT / SPYUSDT / AAPLUSDT / xyz:META / xyz:GOOGL / CLUSDT / EWYUSDT / xyz:MU / xyz:INTC / xyz:AMZN / xyz:SNDK / xyz:TSM |
 | 最大持仓数 | 2 |
 | 最小置信度 | 80（均值回归仓 85） |
 | 最大杠杆 | 5x |

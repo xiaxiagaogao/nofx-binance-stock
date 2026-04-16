@@ -2,7 +2,7 @@
   "name": "4.4",
   "strategy_id": "5e5f498a-6fe0-4acb-88bf-069c491042e0",
   "created_at": "2026-04-04 05:23:26.330864862+00:00",
-  "updated_at": "2026-04-07T07:06:03.982107",
+  "updated_at": "2026-04-12 13:51:48.291426558+00:00",
   "config": {
     "language": "zh",
     "coin_source": {
@@ -13,7 +13,16 @@
         "XAUUSDT",
         "QQQUSDT",
         "SPYUSDT",
-        "xyz:AAPL"
+        "AAPLUSDT",
+        "xyz:META",
+        "xyz:GOOGL",
+        "CLUSDT",
+        "EWYUSDT",
+        "xyz:MU",
+        "xyz:INTC",
+        "xyz:AMZN",
+        "xyz:SNDK",
+        "xyz:TSM"
       ],
       "use_ai500": false,
       "use_oi_top": false,
@@ -73,14 +82,16 @@
       "price_ranking_limit": 10
     },
     "risk_control": {
-      "max_positions": 2,
+      "max_positions": 5,
+      "max_leverage": 5,
+      "max_position_value_ratio": 1,
       "btc_eth_max_leverage": 5,
       "altcoin_max_leverage": 5,
       "btc_eth_max_position_value_ratio": 2,
       "altcoin_max_position_value_ratio": 0.5,
-      "max_margin_usage": 0.6,
-      "min_position_size": 12,
-      "min_risk_reward_ratio": 2,
+      "max_margin_usage": 0.8,
+      "min_position_size": 28,
+      "min_risk_reward_ratio": 3,
       "min_confidence": 80
     },
     "prompt_sections": {

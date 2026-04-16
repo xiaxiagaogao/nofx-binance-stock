@@ -493,7 +493,7 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 				"SNDKUSDT":  "semiconductor",
 				"TSMUSDT":   "semiconductor", // xyz:TSM → TSMUSDT
 				// Tech Mega Cap
-				"APPLUSDT":  "tech_mega",     // Apple (Binance uses APPL not AAPL)
+				"AAPLUSDT":  "tech_mega",     // Apple
 				"METAUSDT":  "tech_mega",
 				"GOOGLUSDT": "tech_mega",
 				"AMZNUSDT":  "tech_mega",     // xyz:AMZN → AMZNUSDT (was wrong AMAZUSDT)
