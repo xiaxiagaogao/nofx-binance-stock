@@ -13,7 +13,7 @@ import (
 // Hard limits to prevent token explosion in AI requests
 const (
 	MaxCandidateCoins = 10
-	MaxPositions      = 3
+	MaxPositions      = 10
 	MaxTimeframes     = 4
 	MinKlineCount     = 10
 	MaxKlineCount     = 30
@@ -488,7 +488,7 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 			EnablePriceRanking:   false,
 		},
 		RiskControl: RiskControlConfig{
-			MaxPositions:          2,    // Max 2 positions simultaneously (CODE ENFORCED)
+			MaxPositions:          8,    // Max 8 positions simultaneously (CODE ENFORCED)
 			MaxLeverage:           5,    // Max 5x leverage for all assets (AI guided)
 			MaxPositionValueRatio: 0.5,  // Max position = 0.5x equity (CODE ENFORCED, conservative for stocks)
 			MaxMarginUsage:        0.6,  // Max 60% margin usage (CODE ENFORCED)

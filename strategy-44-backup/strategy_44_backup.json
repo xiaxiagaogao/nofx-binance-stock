@@ -82,7 +82,7 @@
       "price_ranking_limit": 10
     },
     "risk_control": {
-      "max_positions": 6,
+      "max_positions": 8,
       "max_leverage": 5,
       "max_position_value_ratio": 1,
       "btc_eth_max_leverage": 5,
