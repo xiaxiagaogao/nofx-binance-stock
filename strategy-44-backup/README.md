@@ -1,8 +1,19 @@
-# NOFX 策略 4.4 备份
+# NOFX 策略 4.5 备份
 
 > 来源：EC2 `13.114.103.175` `/root/stacks/nofx/data/data.db`
 > 策略 ID：`5e5f498a-6fe0-4acb-88bf-069c491042e0`
-> 更新时间：`2026-04-12 13:51:48.291426558+00:00`
+> 更新时间：`2026-04-16`
+> 上一版本：4.4（2026-04-12）
+
+### 4.4 → 4.5 主要变更
+- `max_positions`: 2 → **6**（支持跨板块分散建仓）
+- Prompt 全面重写：从「中短线单兵执行者」升级为「美股映射永续合约基金经理」
+- 加入美股时段意识（HKT 时区基准）
+- 加入宏观论文对齐层（risk_off/cautious/risk_on 对应不同行为）
+- 加入板块联动意识（每板块同向最多 2 个）
+- 加入资产类别特性（XAU/CL/EWY/ETF 各有专项逻辑）
+- 加入仓位意图标注（core_beta / tactical_alpha / hedge / opportunistic）
+- 决策流程改为自上而下：宏观 → 组合 → 时段 → 板块 → 个股技术
 
 ---
 
@@ -27,13 +38,13 @@ python3 restore_strategy.py
 
 | 项目 | 值 |
 |---|---|
-| 策略名 | 4.4 |
+| 策略名 | 4.5 |
 | 语言 | 中文（zh） |
 | 主要周期 | 1h |
 | 较长周期 | 4h |
 | 辅助周期 | 1h / 4h / 1d |
 | 标的 | TSLAUSDT / NVDAUSDT / XAUUSDT / QQQUSDT / SPYUSDT / AAPLUSDT / xyz:META / xyz:GOOGL / CLUSDT / EWYUSDT / xyz:MU / xyz:INTC / xyz:AMZN / xyz:SNDK / xyz:TSM |
-| 最大持仓数 | 2 |
+| 最大持仓数 | 6 |
 | 最小置信度 | 80（均值回归仓 85） |
 | 最大杠杆 | 5x |
 | 保证金上限 | 60% |
