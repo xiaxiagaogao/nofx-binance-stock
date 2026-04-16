@@ -101,6 +101,12 @@
         "ev_auto": 1,
         "safe_haven": 1,
         "energy": 1
+      },
+      "session_scan_intervals": {
+        "us_market_open": 20,
+        "us_pre_market": 60,
+        "us_after_hours": 60,
+        "us_market_closed": 120
       }
     },
     "prompt_sections": {

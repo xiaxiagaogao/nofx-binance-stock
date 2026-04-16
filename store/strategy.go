@@ -306,6 +306,11 @@ type RiskControlConfig struct {
 	// If a category is not listed here, MaxSameCategoryPositions is used as fallback.
 	CategoryMaxPositions map[string]int `json:"category_max_positions,omitempty"`
 
+	// Per-session scan interval in minutes.
+	// Keys: "us_market_open", "us_pre_market", "us_after_hours", "us_market_closed"
+	// If unset, the trader's default ScanInterval is used.
+	SessionScanIntervals map[string]int `json:"session_scan_intervals,omitempty"`
+
 	// Trailing stop: minimum profit % before drawdown monitor activates.
 	// Default: 0.03 (3%). Replaces old hardcoded 5%.
 	DrawdownActivationProfit float64 `json:"drawdown_activation_profit,omitempty"`
@@ -391,6 +396,17 @@ func (r RiskControlConfig) GetSymbolCategory(symbol string) string {
 		}
 	}
 	return ""
+}
+
+// GetSessionScanInterval returns the scan interval duration for the given US trading session.
+// Falls back to defaultInterval if the session is not configured.
+func (r RiskControlConfig) GetSessionScanInterval(session string, defaultInterval time.Duration) time.Duration {
+	if r.SessionScanIntervals != nil {
+		if minutes, ok := r.SessionScanIntervals[session]; ok && minutes > 0 {
+			return time.Duration(minutes) * time.Minute
+		}
+	}
+	return defaultInterval
 }
 
 // GetCategoryMaxPositions returns the per-category same-direction position limit.
@@ -532,6 +548,12 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 				"ev_auto":       1,
 				"safe_haven":    1,
 				"energy":        1,
+			},
+			SessionScanIntervals: map[string]int{
+				"us_market_open":   20,  // active trading window — 20min
+				"us_pre_market":    60,  // reduced activity — 1h
+				"us_after_hours":   60,  // reduced activity — 1h
+				"us_market_closed": 120, // position monitoring only — 2h
 			},
 			DrawdownActivationProfit: 0.03,
 			DrawdownCloseThreshold:   0.25,

@@ -306,9 +306,6 @@ func (at *AutoTrader) Run() error {
 		}
 	}
 
-	ticker := time.NewTicker(at.config.ScanInterval)
-	defer ticker.Stop()
-
 	// Check if this is a grid trading strategy
 	isGridStrategy := at.IsGridStrategy()
 	if isGridStrategy {
@@ -339,8 +336,19 @@ func (at *AutoTrader) Run() error {
 			break
 		}
 
+		// Determine sleep duration based on current US trading session.
+		// Grid strategies always use the fixed ScanInterval.
+		sleepDur := at.config.ScanInterval
+		if !isGridStrategy && at.config.StrategyConfig != nil {
+			session := kernel.GetUSTradingSession(time.Now().UTC())
+			sleepDur = at.config.StrategyConfig.RiskControl.GetSessionScanInterval(session, at.config.ScanInterval)
+			if sleepDur != at.config.ScanInterval {
+				logger.Infof("⏱️  [%s] Session '%s' → next scan in %v", at.name, session, sleepDur)
+			}
+		}
+
 		select {
-		case <-ticker.C:
+		case <-time.After(sleepDur):
 			if isGridStrategy {
 				if err := at.RunGridCycle(); err != nil {
 					logger.Infof("❌ Grid execution failed: %v", err)
