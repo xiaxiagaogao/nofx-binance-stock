@@ -82,14 +82,14 @@ export function MacroThesisPanel({ traderId, language }: MacroThesisPanelProps) 
           <h3 className="text-xs font-semibold text-nofx-text-main tracking-wide uppercase">
             {t('fundManager.macroThesis', language)}
           </h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {thesis && (
-              <div className="flex items-center gap-1.5 text-[10px] text-nofx-text-muted">
-                <span>{thesis.age_hours.toFixed(1)}h</span>
-                <span>·</span>
-                <span className="uppercase">{thesis.source}</span>
+              <div className="flex items-center gap-1.5 text-[10px] text-nofx-text-muted min-w-0 shrink">
+                <span className="shrink-0">{thesis.age_hours.toFixed(1)}h</span>
+                <span className="shrink-0">·</span>
+                <span className="uppercase shrink-0">{thesis.source}</span>
                 {thesis.is_stale && (
-                  <span className="px-1.5 py-0.5 rounded bg-nofx-red/10 text-nofx-red font-bold text-[9px]">
+                  <span className="px-1.5 py-0.5 rounded bg-nofx-red/10 text-nofx-red font-bold text-[9px] shrink-0">
                     {t('fundManager.stale', language)}
                   </span>
                 )}
@@ -97,7 +97,7 @@ export function MacroThesisPanel({ traderId, language }: MacroThesisPanelProps) 
             )}
             <button
               onClick={() => setShowPushModal(true)}
-              className="px-2 py-0.5 rounded text-[10px] font-semibold transition-opacity hover:opacity-80"
+              className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold transition-opacity hover:opacity-80"
               style={{ background: 'rgba(240,185,11,0.12)', color: '#F0B90B' }}
             >
               + {t('fundManager.push', language)}
