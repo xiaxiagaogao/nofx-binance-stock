@@ -398,13 +398,24 @@ func (r RiskControlConfig) GetSymbolCategory(symbol string) string {
 	return ""
 }
 
+// builtinSessionIntervals are the hardcoded fallback scan intervals per US trading session.
+// Used when SessionScanIntervals is nil (e.g. legacy strategy configs loaded from DB).
+var builtinSessionIntervals = map[string]int{
+	"us_market_open":   20,  // active trading window — 20 min
+	"us_pre_market":    60,  // reduced activity — 1 h
+	"us_after_hours":   60,  // reduced activity — 1 h
+	"us_market_closed": 120, // position monitoring only — 2 h
+}
+
 // GetSessionScanInterval returns the scan interval duration for the given US trading session.
-// Falls back to defaultInterval if the session is not configured.
+// Priority: SessionScanIntervals from config → builtinSessionIntervals → defaultInterval.
 func (r RiskControlConfig) GetSessionScanInterval(session string, defaultInterval time.Duration) time.Duration {
-	if r.SessionScanIntervals != nil {
-		if minutes, ok := r.SessionScanIntervals[session]; ok && minutes > 0 {
-			return time.Duration(minutes) * time.Minute
-		}
+	m := r.SessionScanIntervals
+	if m == nil {
+		m = builtinSessionIntervals
+	}
+	if minutes, ok := m[session]; ok && minutes > 0 {
+		return time.Duration(minutes) * time.Minute
 	}
 	return defaultInterval
 }

@@ -339,9 +339,13 @@ func (at *AutoTrader) Run() error {
 		// Determine sleep duration based on current US trading session.
 		// Grid strategies always use the fixed ScanInterval.
 		sleepDur := at.config.ScanInterval
-		if !isGridStrategy && at.config.StrategyConfig != nil {
+		if !isGridStrategy {
 			session := kernel.GetUSTradingSession(time.Now().UTC())
-			sleepDur = at.config.StrategyConfig.RiskControl.GetSessionScanInterval(session, at.config.ScanInterval)
+			var riskCtrl store.RiskControlConfig
+			if at.config.StrategyConfig != nil {
+				riskCtrl = at.config.StrategyConfig.RiskControl
+			}
+			sleepDur = riskCtrl.GetSessionScanInterval(session, at.config.ScanInterval)
 			if sleepDur != at.config.ScanInterval {
 				logger.Infof("⏱️  [%s] Session '%s' → next scan in %v", at.name, session, sleepDur)
 			}
