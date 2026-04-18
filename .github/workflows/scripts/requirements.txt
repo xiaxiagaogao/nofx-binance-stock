@@ -1,2 +1,0 @@
-# Python dependencies for GitHub Actions scripts
-requests>=2.31.0
