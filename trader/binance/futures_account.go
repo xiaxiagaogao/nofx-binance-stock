@@ -162,6 +162,21 @@ func (t *FuturesTrader) GetTradesForSymbol(symbol string, startTime time.Time, l
 		limit = 1000
 	}
 
+	// Binance /fapi/v1/userTrades requires the startTime~endTime interval to be
+	// <= 7 days. When exceeded, the API silently returns 0 records (no error),
+	// which stalls the incremental sync cursor indefinitely. Clamp to 6d23h to
+	// stay safely inside the limit.
+	const maxUserTradesLookback = 6*24*time.Hour + 23*time.Hour
+	if since := time.Now().UTC().Sub(startTime); since > maxUserTradesLookback {
+		originalStart := startTime
+		startTime = time.Now().UTC().Add(-maxUserTradesLookback)
+		logger.Infof("⚠️ userTrades 7-day window exceeded for %s: clamped startTime %s → %s (was %v ago)",
+			symbol,
+			originalStart.UTC().Format("2006-01-02 15:04:05"),
+			startTime.UTC().Format("2006-01-02 15:04:05"),
+			since.Round(time.Minute))
+	}
+
 	accountTrades, err := t.client.NewListAccountTradeService().
 		Symbol(symbol).
 		StartTime(startTime.UnixMilli()).
