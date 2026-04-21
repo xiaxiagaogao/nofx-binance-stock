@@ -913,3 +913,73 @@ func TradingSessionLabelZh(session string) string {
 		return "未知"
 	}
 }
+
+// ============================================================================
+// Session Scheduling Helpers
+// ============================================================================
+
+// beijingLoc is the anchor timezone for clock-aligned scheduling.
+// Alignment in Beijing time keeps tick boundaries stable regardless of
+// the container's local timezone.
+var beijingLoc = time.FixedZone("CST", 8*3600)
+
+// BeijingLoc exposes the Beijing timezone used by NextAlignedTick callers
+// that want to format wake-up times for logs.
+func BeijingLoc() *time.Location { return beijingLoc }
+
+// sessionBoundariesET are the ET hour:minute marks where GetUSTradingSession
+// can transition on a weekday. Saturday/Sunday are handled by the weekend
+// override inside GetUSTradingSession itself.
+var sessionBoundariesET = []struct{ h, m int }{
+	{4, 0},  // closed -> pre_market
+	{9, 30}, // pre_market -> market_open
+	{16, 0}, // market_open -> after_hours
+	{20, 0}, // after_hours -> closed
+}
+
+// NextUSTradingSessionBoundary returns the next UTC instant at which
+// GetUSTradingSession(t) differs from GetUSTradingSession(utcNow). Boundaries
+// that cross a weekend but do not change the session label (e.g. Fri 20:00 ET
+// and Sat 04:00 ET are both "closed") are skipped automatically.
+// Returns zero time only if no change is found within 8 days (never in practice).
+func NextUSTradingSessionBoundary(utcNow time.Time) time.Time {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		loc = time.FixedZone("EDT", -4*3600)
+	}
+	current := GetUSTradingSession(utcNow)
+	etNow := utcNow.In(loc)
+	for dayOffset := 0; dayOffset < 8; dayOffset++ {
+		day := etNow.AddDate(0, 0, dayOffset)
+		for _, b := range sessionBoundariesET {
+			candidate := time.Date(day.Year(), day.Month(), day.Day(), b.h, b.m, 0, 0, loc)
+			if !candidate.After(etNow) {
+				continue
+			}
+			if GetUSTradingSession(candidate.UTC()) != current {
+				return candidate.UTC()
+			}
+		}
+	}
+	return time.Time{}
+}
+
+// NextAlignedTick returns the next clock-aligned instant strictly after now,
+// anchored to Beijing-midnight with the given interval. Examples:
+//   - interval=20m → :00/:20/:40 of each Beijing hour
+//   - interval=1h  → top of each Beijing hour
+//   - interval=2h  → top of each even Beijing hour (00,02,04,...)
+func NextAlignedTick(now time.Time, interval time.Duration) time.Time {
+	if interval <= 0 {
+		return now
+	}
+	intMin := int64(interval / time.Minute)
+	if intMin <= 0 {
+		return now.Add(interval)
+	}
+	bj := now.In(beijingLoc)
+	midnight := time.Date(bj.Year(), bj.Month(), bj.Day(), 0, 0, 0, 0, beijingLoc)
+	elapsedMin := int64(bj.Sub(midnight) / time.Minute)
+	nextMin := ((elapsedMin / intMin) + 1) * intMin
+	return midnight.Add(time.Duration(nextMin) * time.Minute).UTC()
+}
