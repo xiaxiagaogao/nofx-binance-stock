@@ -309,8 +309,8 @@ func (client *Client) ParseMCPResponseFull(body []byte) (*LLMResponse, error) {
 		content = extractTextFromRawBody(body)
 		if content == "" {
 			preview := string(body)
-			if len(preview) > 1200 {
-				preview = preview[:1200] + "..."
+			if len(preview) > 20000 {
+				preview = preview[:20000] + "..."
 			}
 			client.Log.Warnf("⚠️  [%s] Empty text content after response parse. Raw body preview: %s", client.String(), preview)
 		}
@@ -371,11 +371,16 @@ func extractTextFromRawBody(body []byte) string {
 		return ""
 	}
 
-	// Walk: obj.choices[0].message.content (generic)
+	// Walk: obj.choices[0].message.{content,reasoning_content} (generic + reasoning models)
 	if choices, ok := obj["choices"].([]any); ok && len(choices) > 0 {
 		if c, ok := choices[0].(map[string]any); ok {
 			if msg, ok := c["message"].(map[string]any); ok {
-				return extractTextContent(msg["content"])
+				if text := extractTextContent(msg["content"]); text != "" {
+					return text
+				}
+				if reasoning, ok := msg["reasoning_content"].(string); ok && reasoning != "" {
+					return reasoning
+				}
 			}
 		}
 	}
@@ -390,9 +395,26 @@ func extractTextFromRawBody(body []byte) string {
 	if text, ok := obj["text"].(string); ok && text != "" {
 		return text
 	}
-	// Try obj.output (Anthropic-like)
+	// Try obj.output: string (Anthropic-like) OR array (OpenAI Responses API)
 	if output, ok := obj["output"].(string); ok && output != "" {
 		return output
+	}
+	if outputArr, ok := obj["output"].([]any); ok {
+		if text := extractTextContent(outputArr); text != "" {
+			return text
+		}
+		for _, item := range outputArr {
+			if m, ok := item.(map[string]any); ok {
+				if content, ok := m["content"]; ok {
+					if text := extractTextContent(content); text != "" {
+						return text
+					}
+				}
+			}
+		}
+	}
+	if outputText, ok := obj["output_text"].(string); ok && outputText != "" {
+		return outputText
 	}
 	return ""
 }
@@ -419,61 +441,77 @@ func (client *Client) BuildRequest(url string, jsonData []byte) (*http.Request, 
 	return req, nil
 }
 
-// Call single AI API call (fixed flow, cannot be overridden)
+// Call single AI API call — uses streaming internally because some OpenAI-compatible
+// proxy backends fail to populate message.content in non-streamed aggregated
+// responses; SSE deltas remain reliable. Output-shape contract unchanged.
 func (client *Client) Call(systemPrompt, userPrompt string) (string, error) {
-	// Print current AI configuration
 	client.Log.Infof("📡 [%s] Request AI Server: BaseURL: %s", client.String(), client.BaseURL)
 	client.Log.Debugf("[%s] UseFullURL: %v", client.String(), client.UseFullURL)
 	if len(client.APIKey) > 8 {
 		client.Log.Debugf("[%s]   API Key: %s...%s", client.String(), client.APIKey[:4], client.APIKey[len(client.APIKey)-4:])
 	}
 
-	// Step 1: Build request body (via hooks for dynamic dispatch)
 	requestBody := client.Hooks.BuildMCPRequestBody(systemPrompt, userPrompt)
+	requestBody["stream"] = true
 
-	// Step 2: Serialize request body (via hooks for dynamic dispatch)
 	jsonData, err := client.Hooks.MarshalRequestBody(requestBody)
 	if err != nil {
 		return "", err
 	}
 
-	// Step 3: Build URL (via hooks for dynamic dispatch)
 	url := client.Hooks.BuildUrl()
-	client.Log.Infof("📡 [MCP %s] Request URL: %s", client.String(), url)
+	client.Log.Infof("📡 [MCP %s] Request URL: %s (streaming)", client.String(), url)
 
-	// Step 4: Create HTTP request (fixed logic)
-	req, err := client.Hooks.BuildRequest(url, jsonData)
+	httpReq, err := client.Hooks.BuildRequest(url, jsonData)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Step 5: Send HTTP request (fixed logic)
-	resp, err := client.HTTPClient.Do(req)
+	const idleTimeout = 60 * time.Second
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resetCh := make(chan struct{}, 1)
+	go func() {
+		t := time.NewTimer(idleTimeout)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				cancel()
+				return
+			case <-resetCh:
+				if !t.Stop() {
+					select {
+					case <-t.C:
+					default:
+					}
+				}
+				t.Reset(idleTimeout)
+			}
+		}
+	}()
+
+	httpReq = httpReq.WithContext(ctx)
+	resp, err := client.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
+		return "", fmt.Errorf("failed to send streaming request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Step 6: Read response body (fixed logic)
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Step 7: Check HTTP status code (fixed logic)
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("API returned error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Step 8: Parse response (via hooks for dynamic dispatch)
-	result, err := client.Hooks.ParseMCPResponse(body)
-	if err != nil {
-		return "", fmt.Errorf("fail to parse AI server response: %w", err)
-	}
-
-	return result, nil
+	return ParseSSEStream(resp.Body, nil, func() {
+		select {
+		case resetCh <- struct{}{}:
+		default:
+		}
+	})
 }
-
 func (client *Client) String() string {
 	return fmt.Sprintf("[Provider: %s, Model: %s]",
 		client.Provider, client.Model)
