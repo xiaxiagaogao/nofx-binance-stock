@@ -336,19 +336,35 @@ func (at *AutoTrader) Run() error {
 			break
 		}
 
-		// Determine sleep duration based on current US trading session.
-		// Grid strategies always use the fixed ScanInterval.
-		sleepDur := at.config.ScanInterval
-		if !isGridStrategy {
-			session := kernel.GetUSTradingSession(time.Now().UTC())
+		// Determine next wake-up. Grid strategies keep the fixed ScanInterval.
+		// Session-aware strategies wake at the earlier of:
+		//   (a) the next clock-aligned tick in the current session, or
+		//   (b) the next US session boundary — ensures new sessions trigger promptly.
+		var sleepDur time.Duration
+		if isGridStrategy {
+			sleepDur = at.config.ScanInterval
+		} else {
+			now := time.Now().UTC()
+			session := kernel.GetUSTradingSession(now)
 			var riskCtrl store.RiskControlConfig
 			if at.config.StrategyConfig != nil {
 				riskCtrl = at.config.StrategyConfig.RiskControl
 			}
-			sleepDur = riskCtrl.GetSessionScanInterval(session, at.config.ScanInterval)
-			if sleepDur != at.config.ScanInterval {
-				logger.Infof("⏱️  [%s] Session '%s' → next scan in %v", at.name, session, sleepDur)
+			interval := riskCtrl.GetSessionScanInterval(session, at.config.ScanInterval)
+			wake := kernel.NextAlignedTick(now, interval)
+			wakeSource := "aligned"
+			if boundary := kernel.NextUSTradingSessionBoundary(now); !boundary.IsZero() && boundary.Before(wake) {
+				wake = boundary
+				wakeSource = "session-boundary"
 			}
+			sleepDur = time.Until(wake)
+			if sleepDur < 0 {
+				sleepDur = 0
+			}
+			logger.Infof("⏱️  [%s] Session '%s' → next %s (%s, in %v)",
+				at.name, session,
+				wake.In(kernel.BeijingLoc()).Format("01-02 15:04"),
+				wakeSource, sleepDur.Round(time.Second))
 		}
 
 		select {
