@@ -121,3 +121,32 @@ allowed_sectors: {{allowed_sectors}}
 {{candidates_market_data}}
 
 请输出 JSON 数组。`
+
+// =============================================================================
+// Step 3 — Portfolio Ranking (conditional, only when over capacity)
+// =============================================================================
+
+const PromptStep3RankingSystemV1 = `你是组合排序助手。当前有多个通过技术筛选的候选，但 slot 不够。请按"对当前组合的边际增益"排优先级。
+
+考虑维度（重要性递减）：
+1. 与当前持仓的相关性（低相关优先；新板块比同板块加仓更优）
+2. 入场结构清晰度（key_entry_level 距现价远近、止损位空间）
+3. confidence
+4. 板块多样化贡献
+
+只输出 JSON（不要 markdown fence）。schema:
+{
+  "ranked": ["SYMBOL1", "SYMBOL2", ...],
+  "top_n": int (≤ available_slots),
+  "reasoning": "string"
+}`
+
+const PromptStep3RankingUserV1 = `## 候选清单（已通过 Step 1 + Step 2 + 代码过滤）
+{{candidates_json}}
+
+## 当前持仓
+{{positions_summary}}
+
+## available_slots = {{slots}}
+
+请输出 JSON。`

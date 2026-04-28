@@ -256,6 +256,65 @@ func TestStep2TechnicalScreening_RejectsUnknownSymbol(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Code filter + Step 3 tests
+// =============================================================================
+
+func TestCodeFilterCandidates_SkipsOpenSymbols(t *testing.T) {
+	ctx := &Context{
+		Positions: []PositionInfo{{Symbol: "NVDAUSDT", Side: "long"}},
+	}
+	engine := newChainTestEngine()
+	candidates := []CandidateCoin{
+		{Symbol: "NVDAUSDT"}, // already open — should be filtered
+		{Symbol: "QQQUSDT"},
+	}
+	out, slots := codeFilterCandidates(ctx, engine, candidates)
+	if len(out) != 1 || out[0].Symbol != "QQQUSDT" {
+		t.Fatalf("expected only QQQ to survive (NVDA already open); got %v", out)
+	}
+	if slots <= 0 {
+		t.Fatalf("expected positive slots; got %d", slots)
+	}
+}
+
+func TestStep3Ranking_TruncatesToTopN(t *testing.T) {
+	mockResp := `{"ranked":["NVDAUSDT","QQQUSDT","SPYUSDT"],"top_n":2,"reasoning":"top 2 are best"}`
+	mock := NewMockAIClient().WithResponse(mockResp)
+	ctx := newChainTestContext()
+	candidates := []CandidateCoin{{Symbol: "NVDAUSDT"}, {Symbol: "QQQUSDT"}, {Symbol: "SPYUSDT"}}
+	results := []Step2Result{
+		{Symbol: "NVDAUSDT", Pass: true},
+		{Symbol: "QQQUSDT", Pass: true},
+		{Symbol: "SPYUSDT", Pass: true},
+	}
+
+	step3, _, err := portfolioRankingCall(ctx, mock, results, candidates, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if step3.TopN != 2 {
+		t.Fatalf("expected top_n=2; got %d", step3.TopN)
+	}
+	if len(step3.Ranked) != 3 {
+		t.Fatalf("expected 3 ranked entries; got %d", len(step3.Ranked))
+	}
+}
+
+func TestStep3Ranking_EnforcesSlotsCap(t *testing.T) {
+	mockResp := `{"ranked":["A","B","C","D"],"top_n":10,"reasoning":"x"}`
+	mock := NewMockAIClient().WithResponse(mockResp)
+	ctx := newChainTestContext()
+
+	step3, _, err := portfolioRankingCall(ctx, mock, nil, nil, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if step3.TopN != 2 {
+		t.Fatalf("expected top_n=2 (capped to slots); got %d", step3.TopN)
+	}
+}
+
 // newChainTestContext / newChainTestEngine are minimal shared fixtures.
 func newChainTestContext() *Context {
 	return &Context{

@@ -83,28 +83,52 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 	}
 	fmt.Fprintf(&cot, "[step2] %d → %d pass\n", len(filtered), len(step2Pass))
 
-	// If no new candidates and no positions to evaluate, emit empty
-	if len(step2Pass) == 0 && len(ctx.Positions) == 0 {
+	// Deterministic code filter (sector caps, global slot cap, same-symbol dedup)
+	postFilter, slots := codeFilterCandidates(ctx, engine, step2Pass)
+	fmt.Fprintf(&cot, "[code-filter] %d → %d (slots=%d)\n", len(step2Pass), len(postFilter), slots)
+
+	if len(postFilter) == 0 && len(ctx.Positions) == 0 {
 		return &FullDecision{
 			Decisions:         []Decision{},
-			CoTTrace:          "[chain:no-candidates-after-step2] " + cot.String(),
+			CoTTrace:          "[chain:no-candidates-after-filter] " + cot.String(),
 			RawResponse:       "",
 			Timestamp:         time.Now(),
 			MacroThesisUpdate: step1.MacroThesisUpdate,
 		}, nil
 	}
 
-	// MVP: Step 3 added in next commit. Pass step2-passed list straight to Step 4.
-	step4, err := decisionGenerationCall(ctx, engine, mcpClient, step2Pass)
+	// Step 3: only when over capacity
+	finalCandidates := postFilter
+	if len(postFilter) > slots && slots > 0 {
+		step3, _, err := portfolioRankingCall(ctx, mcpClient, step2Results, postFilter, slots)
+		if err != nil {
+			return chainFallback(ctx, mcpClient, engine, fmt.Sprintf("step3:%v", err))
+		}
+		rankedSet := map[string]bool{}
+		for i, sym := range step3.Ranked {
+			if i >= step3.TopN {
+				break
+			}
+			rankedSet[sym] = true
+		}
+		ranked := []CandidateCoin{}
+		for _, c := range postFilter {
+			if rankedSet[c.Symbol] {
+				ranked = append(ranked, c)
+			}
+		}
+		finalCandidates = ranked
+		fmt.Fprintf(&cot, "[step3] ranked %d → top %d\n", len(postFilter), len(finalCandidates))
+	}
+
+	step4, err := decisionGenerationCall(ctx, engine, mcpClient, finalCandidates)
 	if err != nil {
 		return chainFallback(ctx, mcpClient, engine, fmt.Sprintf("step4:%v", err))
 	}
-
 	if step1.MacroThesisUpdate != nil {
 		step4.MacroThesisUpdate = step1.MacroThesisUpdate
 	}
-
-	step4.CoTTrace = "[chain:1+2+4] " + cot.String() + step4.CoTTrace
+	step4.CoTTrace = "[chain:full] " + cot.String() + step4.CoTTrace
 	return step4, nil
 }
 
@@ -158,6 +182,94 @@ func renderStep2User(ctx *Context, engine *StrategyEngine, step1 *Step1Output, c
 	out = strings.ReplaceAll(out, "{{allowed_sectors}}", strings.Join(step1.AllowedSectors, ", "))
 	out = strings.ReplaceAll(out, "{{candidates_market_data}}", marketData)
 	return out
+}
+
+// =============================================================================
+// Code filter (deterministic, no LLM) — applies risk-control rules upfront
+// =============================================================================
+
+// codeFilterCandidates applies deterministic risk-control filters: per-sector
+// position caps, global position cap, existing same-symbol dedup.
+// Returns: (filtered_candidates, available_slots).
+func codeFilterCandidates(ctx *Context, engine *StrategyEngine, candidates []CandidateCoin) ([]CandidateCoin, int) {
+	riskCfg := engine.GetRiskControlConfig()
+
+	sectorCount := map[string]int{}
+	openSymbols := map[string]bool{}
+	for _, p := range ctx.Positions {
+		cat := strings.ToLower(riskCfg.GetSymbolCategory(p.Symbol))
+		sectorCount[cat]++
+		openSymbols[p.Symbol] = true
+	}
+
+	availableSlots := riskCfg.MaxPositions - len(ctx.Positions)
+	if availableSlots < 0 {
+		availableSlots = 0
+	}
+
+	out := []CandidateCoin{}
+	for _, c := range candidates {
+		if openSymbols[c.Symbol] {
+			continue
+		}
+		cat := strings.ToLower(riskCfg.GetSymbolCategory(c.Symbol))
+		cap := riskCfg.GetCategoryMaxPositions(cat)
+		if cap > 0 && sectorCount[cat] >= cap {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, availableSlots
+}
+
+// =============================================================================
+// Step 3 — Portfolio Ranking (conditional)
+// =============================================================================
+
+// Step3Output is the parsed JSON from portfolioRankingCall.
+type Step3Output struct {
+	Ranked    []string `json:"ranked"`
+	TopN      int      `json:"top_n"`
+	Reasoning string   `json:"reasoning"`
+}
+
+func portfolioRankingCall(ctx *Context, mcpClient mcp.AIClient, step2Results []Step2Result, candidates []CandidateCoin, slots int) (*Step3Output, string, error) {
+	systemPrompt := PromptStep3RankingSystemV1
+
+	// Send the technical screening results for the relevant candidates
+	relevantSymbols := map[string]bool{}
+	for _, c := range candidates {
+		relevantSymbols[c.Symbol] = true
+	}
+	relevantResults := []Step2Result{}
+	for _, r := range step2Results {
+		if relevantSymbols[r.Symbol] {
+			relevantResults = append(relevantResults, r)
+		}
+	}
+
+	candidatesJSON, _ := json.MarshalIndent(relevantResults, "", "  ")
+	userPrompt := PromptStep3RankingUserV1
+	userPrompt = strings.ReplaceAll(userPrompt, "{{candidates_json}}", string(candidatesJSON))
+	userPrompt = strings.ReplaceAll(userPrompt, "{{positions_summary}}", summarizePositions(ctx.Positions))
+	userPrompt = strings.ReplaceAll(userPrompt, "{{slots}}", fmt.Sprintf("%d", slots))
+
+	resp, err := mcpClient.CallWithMessages(systemPrompt, userPrompt)
+	if err != nil {
+		return nil, resp, fmt.Errorf("step3 LLM call: %w", err)
+	}
+
+	var out Step3Output
+	if err := json.Unmarshal([]byte(extractChainJSONObject(resp)), &out); err != nil {
+		return nil, resp, fmt.Errorf("step3 parse: %w (raw: %s)", err, truncateString(resp, 200))
+	}
+	if out.TopN > slots {
+		out.TopN = slots
+	}
+	if out.TopN < 0 {
+		out.TopN = 0
+	}
+	return &out, resp, nil
 }
 
 func extractChainJSONArray(s string) string {
