@@ -95,7 +95,13 @@ func (at *AutoTrader) runCycle() error {
 
 	// 5. Use strategy engine to call AI for decision
 	logger.Infof("🤖 Requesting AI analysis and decision... [Strategy Engine]")
-	aiDecision, err := kernel.GetFullDecisionWithStrategy(ctx, at.mcpClient, at.strategyEngine, "balanced")
+	var aiDecision *kernel.FullDecision
+	if at.config.StrategyConfig != nil && at.config.StrategyConfig.EnableChainOfThought {
+		logger.Infof("🔗 [%s] cycle %d using chain-of-thought reasoning", at.name, record.CycleNumber)
+		aiDecision, err = kernel.GetFullDecisionChained(ctx, at.mcpClient, at.strategyEngine)
+	} else {
+		aiDecision, err = kernel.GetFullDecisionWithStrategy(ctx, at.mcpClient, at.strategyEngine, "balanced")
+	}
 
 	if aiDecision != nil && aiDecision.AIRequestDurationMs > 0 {
 		record.AIRequestDurationMs = aiDecision.AIRequestDurationMs
