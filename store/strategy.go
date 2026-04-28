@@ -103,6 +103,10 @@ type StrategyConfig struct {
 
 	// Grid trading configuration (only used when StrategyType == "grid_trading")
 	GridConfig *GridStrategyConfig `json:"grid_config,omitempty"`
+
+	// EnableChainOfThought routes runCycle() through GetFullDecisionChained() when true.
+	// Default false → existing single-LLM-call path (zero behavior change).
+	EnableChainOfThought bool `json:"enable_chain_of_thought,omitempty"`
 }
 
 // GridStrategyConfig grid trading specific configuration
