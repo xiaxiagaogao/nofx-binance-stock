@@ -210,6 +210,52 @@ func TestFilterBySector_AllowListEnforced(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Step 2 — Technical Screening tests
+// =============================================================================
+
+func TestStep2TechnicalScreening_HappyPath(t *testing.T) {
+	mockResp := `[
+  {"symbol":"NVDAUSDT","direction":"long","confidence":78,"structure":"4H EMA20 上方","key_entry_level":200,"key_stop_level":195,"pass":true},
+  {"symbol":"METAUSDT","direction":null,"confidence":40,"structure":"区间中部","pass":false,"reason_if_skip":"无位置优势"}
+]`
+	mock := NewMockAIClient().WithResponse(mockResp)
+	ctx := newChainTestContext()
+	ctx.CandidateCoins = []CandidateCoin{{Symbol: "NVDAUSDT"}, {Symbol: "METAUSDT"}}
+	engine := newChainTestEngine()
+	step1 := &Step1Output{DirectionBias: "long_preferred", AllowedSectors: []string{"semiconductor", "tech_mega"}}
+
+	results, _, err := technicalScreeningCall(ctx, engine, mock, step1, ctx.CandidateCoins)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if !results[0].Pass {
+		t.Fatal("expected NVDA to pass")
+	}
+	if results[1].Pass {
+		t.Fatal("expected META to skip")
+	}
+}
+
+func TestStep2TechnicalScreening_RejectsUnknownSymbol(t *testing.T) {
+	mockResp := `[{"symbol":"DOGEUSDT","pass":false}]`
+	mock := NewMockAIClient().WithResponse(mockResp)
+	ctx := newChainTestContext()
+	engine := newChainTestEngine()
+	step1 := &Step1Output{}
+
+	_, _, err := technicalScreeningCall(ctx, engine, mock, step1, ctx.CandidateCoins)
+	if err == nil {
+		t.Fatal("expected error for unknown symbol")
+	}
+	if !strings.Contains(err.Error(), "unknown symbol") {
+		t.Fatalf("expected 'unknown symbol' error; got %v", err)
+	}
+}
+
 // newChainTestContext / newChainTestEngine are minimal shared fixtures.
 func newChainTestContext() *Context {
 	return &Context{

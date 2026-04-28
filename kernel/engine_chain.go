@@ -65,20 +65,119 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 		}, nil
 	}
 
-	// MVP: Steps 2-3 added in subsequent commits. Pass filtered list to Step 4.
-	step4, err := decisionGenerationCall(ctx, engine, mcpClient, filtered)
+	// Step 2: technical screening
+	step2Results, _, err := technicalScreeningCall(ctx, engine, mcpClient, step1, filtered)
+	if err != nil {
+		return chainFallback(ctx, mcpClient, engine, fmt.Sprintf("step2:%v", err))
+	}
+	step2Pass := []CandidateCoin{}
+	for _, r := range step2Results {
+		if r.Pass {
+			for _, c := range filtered {
+				if c.Symbol == r.Symbol {
+					step2Pass = append(step2Pass, c)
+					break
+				}
+			}
+		}
+	}
+	fmt.Fprintf(&cot, "[step2] %d → %d pass\n", len(filtered), len(step2Pass))
+
+	// If no new candidates and no positions to evaluate, emit empty
+	if len(step2Pass) == 0 && len(ctx.Positions) == 0 {
+		return &FullDecision{
+			Decisions:         []Decision{},
+			CoTTrace:          "[chain:no-candidates-after-step2] " + cot.String(),
+			RawResponse:       "",
+			Timestamp:         time.Now(),
+			MacroThesisUpdate: step1.MacroThesisUpdate,
+		}, nil
+	}
+
+	// MVP: Step 3 added in next commit. Pass step2-passed list straight to Step 4.
+	step4, err := decisionGenerationCall(ctx, engine, mcpClient, step2Pass)
 	if err != nil {
 		return chainFallback(ctx, mcpClient, engine, fmt.Sprintf("step4:%v", err))
 	}
 
-	// Attach macro_thesis_update to FullDecision (top-level field) — Step 1
-	// owns the update emission per locked design.
 	if step1.MacroThesisUpdate != nil {
 		step4.MacroThesisUpdate = step1.MacroThesisUpdate
 	}
 
-	step4.CoTTrace = "[chain:1+4] " + cot.String() + step4.CoTTrace
+	step4.CoTTrace = "[chain:1+2+4] " + cot.String() + step4.CoTTrace
 	return step4, nil
+}
+
+// =============================================================================
+// Step 2 — Technical Screening
+// =============================================================================
+
+// Step2Result is one element of the Step 2 output array.
+type Step2Result struct {
+	Symbol        string   `json:"symbol"`
+	Direction     string   `json:"direction"`
+	Confidence    int      `json:"confidence"`
+	Structure     string   `json:"structure"`
+	KeyEntryLevel *float64 `json:"key_entry_level"`
+	KeyStopLevel  *float64 `json:"key_stop_level"`
+	Pass          bool     `json:"pass"`
+	ReasonIfSkip  string   `json:"reason_if_skip,omitempty"`
+}
+
+func technicalScreeningCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.AIClient, step1 *Step1Output, candidates []CandidateCoin) ([]Step2Result, string, error) {
+	systemPrompt := PromptStep2TechnicalSystemV1
+	userPrompt := renderStep2User(ctx, engine, step1, candidates)
+
+	resp, err := mcpClient.CallWithMessages(systemPrompt, userPrompt)
+	if err != nil {
+		return nil, resp, fmt.Errorf("step2 LLM call: %w", err)
+	}
+
+	jsonText := extractChainJSONArray(resp)
+	var results []Step2Result
+	if err := json.Unmarshal([]byte(jsonText), &results); err != nil {
+		return nil, resp, fmt.Errorf("step2 parse: %w (raw: %s)", err, truncateString(resp, 200))
+	}
+
+	knownSymbols := map[string]bool{}
+	for _, c := range candidates {
+		knownSymbols[c.Symbol] = true
+	}
+	for i, r := range results {
+		if !knownSymbols[r.Symbol] {
+			return nil, resp, fmt.Errorf("step2 unknown symbol at idx %d: %s", i, r.Symbol)
+		}
+	}
+	return results, resp, nil
+}
+
+func renderStep2User(ctx *Context, engine *StrategyEngine, step1 *Step1Output, candidates []CandidateCoin) string {
+	marketData := formatChainMarketData(ctx, engine, candidates)
+	out := PromptStep2TechnicalUserV1
+	out = strings.ReplaceAll(out, "{{direction_bias}}", step1.DirectionBias)
+	out = strings.ReplaceAll(out, "{{allowed_sectors}}", strings.Join(step1.AllowedSectors, ", "))
+	out = strings.ReplaceAll(out, "{{candidates_market_data}}", marketData)
+	return out
+}
+
+func extractChainJSONArray(s string) string {
+	start := strings.Index(s, "[")
+	if start < 0 {
+		return s
+	}
+	depth := 0
+	for i := start; i < len(s); i++ {
+		switch s[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return s[start:]
 }
 
 // =============================================================================
@@ -106,7 +205,7 @@ func macroAlignmentCall(ctx *Context, mcpClient mcp.AIClient) (*Step1Output, str
 	}
 
 	var out Step1Output
-	jsonText := extractJSONObject(resp)
+	jsonText := extractChainJSONObject(resp)
 	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
 		return nil, resp, fmt.Errorf("step1 parse: %w (raw: %s)", err, truncateString(resp, 200))
 	}
@@ -193,9 +292,9 @@ func summarizeCandidateSectors(ctx *Context) string {
 	return strings.Join(syms, ", ")
 }
 
-// extractJSONObject pulls the first balanced { ... } block from a string.
+// extractChainJSONObject pulls the first balanced { ... } block from a string.
 // Models sometimes wrap JSON in markdown fences or chatty preambles.
-func extractJSONObject(s string) string {
+func extractChainJSONObject(s string) string {
 	start := strings.Index(s, "{")
 	if start < 0 {
 		return s
