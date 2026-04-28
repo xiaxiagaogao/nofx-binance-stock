@@ -48,3 +48,38 @@ Available slots: {{slots}}
 {{market_data}}
 
 请按格式输出。`
+
+// =============================================================================
+// Step 1 — Macro Alignment
+// =============================================================================
+
+const PromptStep1MacroSystemV1 = `你是一名宏观对齐助手。基于宏观论文和当前组合状态，判断本周期允许操作的板块、限制的板块、整体方向偏向。
+
+只输出 JSON，不要其他文本（不要 markdown fence，不要前言）。schema:
+{
+  "market_regime": "risk_on" | "neutral" | "risk_off" | "mixed" | "cautious",
+  "allowed_sectors": ["semiconductor", "index", ...],
+  "restricted_sectors": ["energy", ...],
+  "direction_bias": "long_preferred" | "short_preferred" | "balanced" | "wait",
+  "session_note": "string，简短说明",
+  "macro_thesis_update": null | { "market_regime": ..., "thesis_text": ..., "sector_bias": {...}, "key_risks": [...], "portfolio_intent": "...", "valid_hours": int },
+  "reasoning": "1-3 句中文"
+}
+
+direction_bias=wait 表示本周期不开新仓也不动现有持仓（risk_off 或重大事件前夕等）。`
+
+const PromptStep1MacroUserV1 = `## 当前宏观论文
+{{macro_thesis}}
+
+## 当前组合状态
+方向: {{net_direction}}
+仓位数: {{position_count}} / {{max_positions}}
+板块分布: {{sector_dist}}
+
+## 当前交易时段
+{{session}} (scale_factor={{scale_factor}})
+
+## 候选板块（来自候选清单）
+{{candidate_sectors}}
+
+请输出 JSON。`

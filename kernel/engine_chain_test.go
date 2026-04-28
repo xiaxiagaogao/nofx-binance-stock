@@ -99,6 +99,117 @@ func TestStep4UserPrompt_ContainsAccountState(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Step 1 — Macro Alignment tests
+// =============================================================================
+
+func TestStep1MacroAlignment_HappyPath(t *testing.T) {
+	mockResp := `{
+  "market_regime": "risk_on",
+  "allowed_sectors": ["semiconductor", "index"],
+  "restricted_sectors": ["energy"],
+  "direction_bias": "long_preferred",
+  "session_note": "us_market_open",
+  "macro_thesis_update": null,
+  "reasoning": "test"
+}`
+	mock := NewMockAIClient().WithResponse(mockResp)
+	ctx := newChainTestContext()
+
+	out, _, err := macroAlignmentCall(ctx, mock)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.MarketRegime != "risk_on" {
+		t.Fatalf("expected risk_on, got %s", out.MarketRegime)
+	}
+	if out.DirectionBias != "long_preferred" {
+		t.Fatalf("expected long_preferred, got %s", out.DirectionBias)
+	}
+	if len(out.AllowedSectors) != 2 {
+		t.Fatalf("expected 2 allowed sectors, got %d", len(out.AllowedSectors))
+	}
+}
+
+func TestStep1MacroAlignment_RejectsInvalidRegime(t *testing.T) {
+	mockResp := `{"market_regime":"bullish","direction_bias":"long_preferred","allowed_sectors":[],"restricted_sectors":[],"session_note":"x","reasoning":"y"}`
+	mock := NewMockAIClient().WithResponse(mockResp)
+	ctx := newChainTestContext()
+
+	_, _, err := macroAlignmentCall(ctx, mock)
+	if err == nil {
+		t.Fatal("expected error for invalid regime")
+	}
+	if !strings.Contains(err.Error(), "market_regime") {
+		t.Fatalf("expected market_regime error; got %v", err)
+	}
+}
+
+func TestStep1MacroAlignment_HandlesMarkdownFences(t *testing.T) {
+	mockResp := "```json\n" + `{"market_regime":"neutral","direction_bias":"balanced","allowed_sectors":[],"restricted_sectors":[],"session_note":"x","reasoning":"y"}` + "\n```"
+	mock := NewMockAIClient().WithResponse(mockResp)
+	ctx := newChainTestContext()
+
+	out, _, err := macroAlignmentCall(ctx, mock)
+	if err != nil {
+		t.Fatalf("expected to handle markdown fences; got %v", err)
+	}
+	if out.MarketRegime != "neutral" {
+		t.Fatalf("expected neutral; got %s", out.MarketRegime)
+	}
+}
+
+func TestGetFullDecisionChained_WaitShortcut(t *testing.T) {
+	step1Resp := `{"market_regime":"risk_off","direction_bias":"wait","allowed_sectors":[],"restricted_sectors":[],"session_note":"crash","reasoning":"too risky"}`
+	mock := NewMockAIClient().WithResponse(step1Resp)
+	ctx := newChainTestContext()
+	engine := newChainTestEngine()
+
+	result, err := GetFullDecisionChained(ctx, mock, engine)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mock.Calls() != 1 {
+		t.Fatalf("expected exactly 1 LLM call (step1 only); got %d", mock.Calls())
+	}
+	if len(result.Decisions) != 0 {
+		t.Fatalf("expected empty decisions on wait-shortcut; got %d", len(result.Decisions))
+	}
+	if !strings.Contains(result.CoTTrace, "wait-shortcut") {
+		t.Fatalf("expected CoTTrace to mention wait-shortcut; got %s", result.CoTTrace)
+	}
+}
+
+func TestFilterBySector_RestrictedSectorRemoved(t *testing.T) {
+	engine := newChainTestEngine()
+	candidates := []CandidateCoin{
+		{Symbol: "NVDAUSDT"}, // semiconductor
+		{Symbol: "QQQUSDT"},  // index
+		{Symbol: "CLUSDT"},   // energy
+	}
+	out := filterBySector(candidates, nil, []string{"energy"}, engine)
+	for _, c := range out {
+		if c.Symbol == "CLUSDT" {
+			t.Fatalf("expected CLUSDT (energy) to be filtered out; got %v", out)
+		}
+	}
+	if len(out) != 2 {
+		t.Fatalf("expected 2 survivors; got %d", len(out))
+	}
+}
+
+func TestFilterBySector_AllowListEnforced(t *testing.T) {
+	engine := newChainTestEngine()
+	candidates := []CandidateCoin{
+		{Symbol: "NVDAUSDT"}, // semiconductor
+		{Symbol: "QQQUSDT"},  // index
+	}
+	out := filterBySector(candidates, []string{"semiconductor"}, nil, engine)
+	if len(out) != 1 || out[0].Symbol != "NVDAUSDT" {
+		t.Fatalf("expected only NVDA to survive allow-list; got %v", out)
+	}
+}
+
 // newChainTestContext / newChainTestEngine are minimal shared fixtures.
 func newChainTestContext() *Context {
 	return &Context{
