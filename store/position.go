@@ -350,8 +350,13 @@ func (s *PositionStore) GetOpenPositions(traderID string) ([]*TraderPosition, er
 	return positions, nil
 }
 
-// GetOpenPositionBySymbol gets open position for specified symbol and direction
+// GetOpenPositionBySymbol gets open position for specified symbol and direction.
+// Side is normalized to UPPERCASE to match how rows are persisted (LONG/SHORT)
+// regardless of caller casing — Binance live-position API exposes lowercase
+// "long"/"short" while order_sync writes UPPER, so reads from the live path
+// would otherwise miss every time.
 func (s *PositionStore) GetOpenPositionBySymbol(traderID, symbol, side string) (*TraderPosition, error) {
+	side = strings.ToUpper(side)
 	var pos TraderPosition
 	err := s.db.Where("trader_id = ? AND symbol = ? AND side = ? AND status = ?", traderID, symbol, side, "OPEN").
 		Order("entry_time DESC").
