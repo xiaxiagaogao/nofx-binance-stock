@@ -122,6 +122,15 @@ func (at *AutoTrader) checkPositionDrawdown() {
 
 // emergencyClosePosition emergency close position function
 func (at *AutoTrader) emergencyClosePosition(symbol, side string) error {
+	// Paper mode: monitor still tracks peakPnL/drawdown in logs but skips the
+	// actual exchange close. Critical when shadow trader shares a Binance
+	// account with a live trader — without this gate the drawdown rule could
+	// close real positions on the shared account.
+	if at.config.StrategyConfig != nil && at.config.StrategyConfig.PaperMode {
+		logger.Infof("  📝 [paper] emergency-close skipped: %s %s (drawdown rule would have fired)", symbol, side)
+		return nil
+	}
+
 	switch side {
 	case "long":
 		order, err := at.trader.CloseLong(symbol, 0) // 0 = close all
