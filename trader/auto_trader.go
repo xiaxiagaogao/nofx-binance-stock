@@ -299,11 +299,19 @@ func (at *AutoTrader) Run() error {
 	at.startDrawdownMonitor()
 
 	// Start Binance order sync if using Binance exchange
-	if at.exchange == "binance" {
+	// Paper-mode traders must NOT run order_sync: they share the Binance account
+	// with the production trader, and the /fapi/v1/userTrades API returns ALL
+	// trades on the account regardless of API key.  If shadow's sync picks up a
+	// fill first, it records it under shadow's traderID — then production's sync
+	// silently skips it (UNIQUE constraint on exchange_trade_id), leaving
+	// production's position OPEN even though the exchange already closed it.
+	if at.exchange == "binance" && !(at.config.StrategyConfig != nil && at.config.StrategyConfig.PaperMode) {
 		if binanceTrader, ok := at.trader.(*binance.FuturesTrader); ok && at.store != nil {
 			binanceTrader.StartOrderSync(at.id, at.exchangeID, at.exchange, at.store, 30*time.Second)
 			logger.Infof("🔄 [%s] Binance order+position sync enabled (every 30s)", at.name)
 		}
+	} else if at.config.StrategyConfig != nil && at.config.StrategyConfig.PaperMode {
+		logger.Infof("📝 [%s] Paper mode: order sync skipped (decisions logged only)", at.name)
 	}
 
 	// Check if this is a grid trading strategy
