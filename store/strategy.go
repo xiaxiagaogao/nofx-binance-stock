@@ -107,6 +107,11 @@ type StrategyConfig struct {
 	// EnableChainOfThought routes runCycle() through GetFullDecisionChained() when true.
 	// Default false → existing single-LLM-call path (zero behavior change).
 	EnableChainOfThought bool `json:"enable_chain_of_thought,omitempty"`
+
+	// PaperMode skips actual exchange order placement. Decisions still flow through the
+	// full pipeline and land in decision_records, but no Binance OpenLong/CloseLong/etc
+	// calls are made. Use for shadow-trader validation when sharing an exchange account.
+	PaperMode bool `json:"paper_mode,omitempty"`
 }
 
 // GridStrategyConfig grid trading specific configuration

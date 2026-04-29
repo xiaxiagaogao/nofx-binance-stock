@@ -11,6 +11,21 @@ import (
 
 // executeDecisionWithRecord executes AI decision and records detailed information
 func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
+	// Paper mode: skip exchange execution; decision still saved to decision_records.
+	if at.config.StrategyConfig != nil && at.config.StrategyConfig.PaperMode {
+		switch decision.Action {
+		case "open_long", "open_short", "close_long", "close_short":
+			logger.Infof("  📝 [paper] %s %s | size=$%.2f lev=%dx SL=%.4f TP=%.4f conf=%d intent=%s",
+				decision.Action, decision.Symbol, decision.PositionSizeUSD, decision.Leverage,
+				decision.StopLoss, decision.TakeProfit, decision.Confidence, decision.IntentType)
+			return nil
+		case "hold", "wait":
+			return nil
+		default:
+			return fmt.Errorf("unknown action: %s", decision.Action)
+		}
+	}
+
 	switch decision.Action {
 	case "open_long":
 		return at.executeOpenLongWithRecord(decision, actionRecord)
