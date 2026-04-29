@@ -82,6 +82,7 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 		}
 	}
 	fmt.Fprintf(&cot, "[step2] %d → %d pass\n", len(filtered), len(step2Pass))
+	cot.WriteString(formatStep2Detail(step2Results))
 
 	// Deterministic code filter (sector caps, global slot cap, same-symbol dedup)
 	postFilter, slots := codeFilterCandidates(ctx, engine, step2Pass)
@@ -118,7 +119,11 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 			}
 		}
 		finalCandidates = ranked
-		fmt.Fprintf(&cot, "[step3] ranked %d → top %d\n", len(postFilter), len(finalCandidates))
+		rankedSyms := []string{}
+		for _, c := range finalCandidates {
+			rankedSyms = append(rankedSyms, c.Symbol)
+		}
+		fmt.Fprintf(&cot, "[step3] ranked %d → top %d: %s\n", len(postFilter), len(finalCandidates), strings.Join(rankedSyms, ", "))
 	}
 
 	step4, err := decisionGenerationCall(ctx, engine, mcpClient, finalCandidates)
@@ -146,6 +151,44 @@ type Step2Result struct {
 	KeyStopLevel  *float64 `json:"key_stop_level"`
 	Pass          bool     `json:"pass"`
 	ReasonIfSkip  string   `json:"reason_if_skip,omitempty"`
+}
+
+// formatStep2Detail renders per-symbol pass/skip verdicts with structure +
+// reason for embedding in cot_trace. Used to validate pullback-long entries.
+func formatStep2Detail(results []Step2Result) string {
+	if len(results) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("[step2:detail]\n")
+	for _, r := range results {
+		if r.Pass {
+			entry := "?"
+			if r.KeyEntryLevel != nil {
+				entry = fmt.Sprintf("%.4f", *r.KeyEntryLevel)
+			}
+			stop := "?"
+			if r.KeyStopLevel != nil {
+				stop = fmt.Sprintf("%.4f", *r.KeyStopLevel)
+			}
+			dir := r.Direction
+			if dir == "" {
+				dir = "-"
+			}
+			fmt.Fprintf(&sb, "  ✓ %s %s conf=%d \"%s\" entry=%s stop=%s\n",
+				r.Symbol, dir, r.Confidence, r.Structure, entry, stop)
+		} else {
+			reason := r.ReasonIfSkip
+			if reason == "" {
+				reason = r.Structure
+			}
+			if reason == "" {
+				reason = "(no reason)"
+			}
+			fmt.Fprintf(&sb, "  ✗ %s skip=\"%s\"\n", r.Symbol, reason)
+		}
+	}
+	return sb.String()
 }
 
 func technicalScreeningCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.AIClient, step1 *Step1Output, candidates []CandidateCoin) ([]Step2Result, string, error) {
