@@ -180,13 +180,16 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	examplePositionSize := maxPositionValue
 	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"TSLAUSDT\", \"action\": \"open_long\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 240.0, \"take_profit\": 280.0, \"confidence\": 85, \"risk_usd\": 50},\n",
 		maxLeverage, examplePositionSize))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"NVDAUSDT\", \"action\": \"add_long\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 200.0, \"take_profit\": 240.0, \"confidence\": 82, \"risk_usd\": 30},\n",
+		maxLeverage, examplePositionSize/2))
 	sb.WriteString("  {\"symbol\": \"XAUUSDT\", \"action\": \"close_long\"}\n")
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
 	sb.WriteString("## Field Description\n\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	sb.WriteString("- `action`: open_long | open_short | add_long | add_short | close_long | close_short | hold | wait\n")
+	sb.WriteString("  - `add_long` / `add_short`: scale into an existing same-side position. `position_size_usd` is the **incremental** size; new SL/TP override existing exchange orders. Backend rejects if no existing same-side position.\n")
 	sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
-	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+	sb.WriteString("- Required when opening or adding: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
 	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
 
 	// Fund manager optional fields

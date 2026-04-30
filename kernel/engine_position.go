@@ -22,6 +22,8 @@ func validateDecision(d *Decision, accountEquity float64, maxLeverage int, maxPo
 	validActions := map[string]bool{
 		"open_long":   true,
 		"open_short":  true,
+		"add_long":    true,
+		"add_short":   true,
 		"close_long":  true,
 		"close_short": true,
 		"hold":        true,
@@ -32,7 +34,11 @@ func validateDecision(d *Decision, accountEquity float64, maxLeverage int, maxPo
 		return fmt.Errorf("invalid action: %s", d.Action)
 	}
 
-	if d.Action == "open_long" || d.Action == "open_short" {
+	// open_* and add_* share the same field requirements (leverage, size, SL/TP, R:R).
+	// The post-add total-notional cap is enforced at the trader layer where live position state is known.
+	isOpening := d.Action == "open_long" || d.Action == "open_short"
+	isAdding := d.Action == "add_long" || d.Action == "add_short"
+	if isOpening || isAdding {
 		maxPositionValue := accountEquity * maxPosRatio
 
 		if d.Leverage <= 0 {
@@ -60,7 +66,8 @@ func validateDecision(d *Decision, accountEquity float64, maxLeverage int, maxPo
 			return fmt.Errorf("stop loss and take profit must be greater than 0")
 		}
 
-		if d.Action == "open_long" {
+		isLongSide := d.Action == "open_long" || d.Action == "add_long"
+		if isLongSide {
 			if d.StopLoss >= d.TakeProfit {
 				return fmt.Errorf("for long positions, stop loss price must be less than take profit price")
 			}
@@ -71,14 +78,14 @@ func validateDecision(d *Decision, accountEquity float64, maxLeverage int, maxPo
 		}
 
 		var entryPrice float64
-		if d.Action == "open_long" {
+		if isLongSide {
 			entryPrice = d.StopLoss + (d.TakeProfit-d.StopLoss)*0.2
 		} else {
 			entryPrice = d.StopLoss - (d.StopLoss-d.TakeProfit)*0.2
 		}
 
 		var riskPercent, rewardPercent, riskRewardRatio float64
-		if d.Action == "open_long" {
+		if isLongSide {
 			riskPercent = (entryPrice - d.StopLoss) / entryPrice * 100
 			rewardPercent = (d.TakeProfit - entryPrice) / entryPrice * 100
 			if riskPercent > 0 {

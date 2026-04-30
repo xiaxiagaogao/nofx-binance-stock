@@ -14,7 +14,7 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 	// Paper mode: skip exchange execution; decision still saved to decision_records.
 	if at.config.StrategyConfig != nil && at.config.StrategyConfig.PaperMode {
 		switch decision.Action {
-		case "open_long", "open_short", "close_long", "close_short":
+		case "open_long", "open_short", "add_long", "add_short", "close_long", "close_short":
 			logger.Infof("  📝 [paper] %s %s | size=$%.2f lev=%dx SL=%.4f TP=%.4f conf=%d intent=%s",
 				decision.Action, decision.Symbol, decision.PositionSizeUSD, decision.Leverage,
 				decision.StopLoss, decision.TakeProfit, decision.Confidence, decision.IntentType)
@@ -31,6 +31,10 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 		return at.executeOpenLongWithRecord(decision, actionRecord)
 	case "open_short":
 		return at.executeOpenShortWithRecord(decision, actionRecord)
+	case "add_long":
+		return at.executeAddLongWithRecord(decision, actionRecord)
+	case "add_short":
+		return at.executeAddShortWithRecord(decision, actionRecord)
 	case "close_long":
 		return at.executeCloseLongWithRecord(decision, actionRecord)
 	case "close_short":
@@ -295,6 +299,178 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	if err := at.trader.SetTakeProfit(decision.Symbol, "SHORT", quantity, decision.TakeProfit); err != nil {
 		logger.Infof("  ⚠ Failed to set take profit: %v", err)
 	}
+
+	return nil
+}
+
+// executeAddLongWithRecord scales into an existing same-side long position.
+// AI's leverage and intent_type are ignored — the existing position's metadata is preserved.
+// SL/TP from the decision override existing exchange orders to cover the new total quantity.
+func (at *AutoTrader) executeAddLongWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
+	return at.executeAddPositionWithRecord(decision, actionRecord, "long")
+}
+
+// executeAddShortWithRecord scales into an existing same-side short position.
+func (at *AutoTrader) executeAddShortWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
+	return at.executeAddPositionWithRecord(decision, actionRecord, "short")
+}
+
+// executeAddPositionWithRecord shared logic for add_long / add_short.
+func (at *AutoTrader) executeAddPositionWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction, side string) error {
+	icon := "📈➕"
+	dbSide := "LONG"
+	posSideStr := "LONG"
+	actionStr := "add_long"
+	if side == "short" {
+		icon = "📉➕"
+		dbSide = "SHORT"
+		posSideStr = "SHORT"
+		actionStr = "add_short"
+	}
+	logger.Infof("  %s Add %s: %s", icon, side, decision.Symbol)
+	execSymbol := market.NormalizeForExchange(decision.Symbol, at.exchange)
+
+	// 1. Find existing same-side position on exchange (gate)
+	positions, err := at.trader.GetPositions()
+	if err != nil {
+		return fmt.Errorf("failed to get positions: %w", err)
+	}
+	var existing map[string]interface{}
+	for _, pos := range positions {
+		if pos["symbol"] == execSymbol && pos["side"] == side {
+			existing = pos
+			break
+		}
+	}
+	if existing == nil {
+		return fmt.Errorf("❌ %s has no existing %s position to add to — use open_%s instead", decision.Symbol, side, side)
+	}
+
+	existingQtyAbs := existing["positionAmt"].(float64)
+	if existingQtyAbs < 0 {
+		existingQtyAbs = -existingQtyAbs
+	}
+	existingEntry, _ := existing["entryPrice"].(float64)
+	existingLeverage := decision.Leverage
+	if lev, ok := existing["leverage"].(float64); ok && lev > 0 {
+		existingLeverage = int(lev)
+	}
+
+	// 2. Get current price
+	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
+	if err != nil {
+		return err
+	}
+
+	// 3. Get balance / equity
+	balance, err := at.trader.GetBalance()
+	if err != nil {
+		return fmt.Errorf("failed to get account balance: %w", err)
+	}
+	availableBalance := 0.0
+	if avail, ok := balance["availableBalance"].(float64); ok {
+		availableBalance = avail
+	}
+	equity := 0.0
+	if eq, ok := balance["totalEquity"].(float64); ok && eq > 0 {
+		equity = eq
+	} else if eq, ok := balance["totalWalletBalance"].(float64); ok && eq > 0 {
+		equity = eq
+	} else {
+		equity = availableBalance
+	}
+
+	// 4. Cap by POST-ADD total notional (key difference from open_*)
+	maxPosRatio := at.config.StrategyConfig.RiskControl.EffectiveMaxPositionValueRatio()
+	maxAllowedTotal := equity * maxPosRatio
+	existingNotional := existingQtyAbs * marketData.CurrentPrice
+	requestedIncrement := decision.PositionSizeUSD
+	postAddTotal := existingNotional + requestedIncrement
+	adjustedIncrement := requestedIncrement
+	if postAddTotal > maxAllowedTotal {
+		adjustedIncrement = maxAllowedTotal - existingNotional
+		if adjustedIncrement <= 0 {
+			return fmt.Errorf("❌ %s position already at cap (existing %.2f USDT >= max %.2f USDT, ratio %.2f), cannot add",
+				decision.Symbol, existingNotional, maxAllowedTotal, maxPosRatio)
+		}
+		logger.Infof("  ⚠️ Add increment capped %.2f → %.2f to keep total ≤ %.2f USDT (existing %.2f + add)",
+			requestedIncrement, adjustedIncrement, maxAllowedTotal, existingNotional)
+		decision.PositionSizeUSD = adjustedIncrement
+	}
+
+	// 5. Margin sufficiency on the increment
+	marginFactor := 1.01/float64(existingLeverage) + 0.001
+	maxAffordable := availableBalance / marginFactor
+	if adjustedIncrement > maxAffordable {
+		shrunk := maxAffordable * 0.98
+		logger.Infof("  ⚠️ Add increment %.2f exceeds max affordable %.2f, auto-reducing to %.2f",
+			adjustedIncrement, maxAffordable, shrunk)
+		adjustedIncrement = shrunk
+		decision.PositionSizeUSD = adjustedIncrement
+	}
+
+	// 6. Min size (applied to the increment, same threshold as opens)
+	if err := at.enforceMinPositionSize(adjustedIncrement); err != nil {
+		return err
+	}
+
+	// 7. Place market order for the increment
+	addQuantity := adjustedIncrement / marketData.CurrentPrice
+	actionRecord.Quantity = addQuantity
+	actionRecord.Price = marketData.CurrentPrice
+
+	var order map[string]interface{}
+	if side == "long" {
+		order, err = at.trader.OpenLong(decision.Symbol, addQuantity, existingLeverage)
+	} else {
+		order, err = at.trader.OpenShort(decision.Symbol, addQuantity, existingLeverage)
+	}
+	if err != nil {
+		return err
+	}
+	if orderID, ok := order["orderId"].(int64); ok {
+		actionRecord.OrderID = orderID
+	}
+
+	newQty := existingQtyAbs + addQuantity
+	newAvg := (existingEntry*existingQtyAbs + marketData.CurrentPrice*addQuantity) / newQty
+	logger.Infof("  ✓ Added: order ID %v, +qty %.4f @ %.4f → total %.4f, avg %.4f → %.4f (lev %dx)",
+		order["orderId"], addQuantity, marketData.CurrentPrice, newQty, existingEntry, newAvg, existingLeverage)
+
+	// 8. Record order — action="add_long"/"add_short" makes adds searchable in DB
+	at.recordAndConfirmOrder(order, decision.Symbol, actionStr, addQuantity, marketData.CurrentPrice, existingLeverage, 0)
+
+	// 9. Merge into DB position (weighted avg via existing helper)
+	if at.store != nil {
+		if dbPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, execSymbol, dbSide); err == nil && dbPos != nil {
+			if err := at.store.Position().UpdatePositionQuantityAndPrice(dbPos.ID, addQuantity, marketData.CurrentPrice, 0); err != nil {
+				logger.Infof("  ⚠ Failed to merge add into DB position id=%d: %v", dbPos.ID, err)
+			}
+		} else {
+			logger.Infof("  ⚠ DB position lookup failed for %s/%s: %v (order recorded; quantity merge skipped)",
+				execSymbol, dbSide, err)
+		}
+	}
+
+	// 10. Replace SL/TP — cancel existing standing orders, place new ones for the NEW total qty.
+	//     If AI omitted SL or TP, skip placing that side (leave naked, AI will set on a later cycle).
+	if decision.StopLoss > 0 || decision.TakeProfit > 0 {
+		if err := at.trader.CancelAllOrders(decision.Symbol); err != nil {
+			logger.Infof("  ⚠ Failed to cancel existing SL/TP before add: %v (will still attempt to set new)", err)
+		}
+		if decision.StopLoss > 0 {
+			if err := at.trader.SetStopLoss(decision.Symbol, posSideStr, newQty, decision.StopLoss); err != nil {
+				logger.Infof("  ⚠ Failed to set new stop loss after add: %v", err)
+			}
+		}
+		if decision.TakeProfit > 0 {
+			if err := at.trader.SetTakeProfit(decision.Symbol, posSideStr, newQty, decision.TakeProfit); err != nil {
+				logger.Infof("  ⚠ Failed to set new take profit after add: %v", err)
+			}
+		}
+	}
+
+	// intent_type / entry_thesis intentionally NOT updated — the original position's metadata is preserved.
 
 	return nil
 }
