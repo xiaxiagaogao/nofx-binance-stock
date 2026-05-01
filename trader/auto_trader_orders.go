@@ -318,12 +318,10 @@ func (at *AutoTrader) executeAddShortWithRecord(decision *kernel.Decision, actio
 // executeAddPositionWithRecord shared logic for add_long / add_short.
 func (at *AutoTrader) executeAddPositionWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction, side string) error {
 	icon := "📈➕"
-	dbSide := "LONG"
 	posSideStr := "LONG"
 	actionStr := "add_long"
 	if side == "short" {
 		icon = "📉➕"
-		dbSide = "SHORT"
 		posSideStr = "SHORT"
 		actionStr = "add_short"
 	}
@@ -437,22 +435,13 @@ func (at *AutoTrader) executeAddPositionWithRecord(decision *kernel.Decision, ac
 	logger.Infof("  ✓ Added: order ID %v, +qty %.4f @ %.4f → total %.4f, avg %.4f → %.4f (lev %dx)",
 		order["orderId"], addQuantity, marketData.CurrentPrice, newQty, existingEntry, newAvg, existingLeverage)
 
-	// 8. Record order — action="add_long"/"add_short" makes adds searchable in DB
+	// 8. Record order — for Binance, recordAndConfirmOrder returns immediately and OrderSync
+	//    handles trader_orders + posBuilder.handleOpen merging via UpdatePositionQuantityAndPrice.
+	//    Do NOT manually call UpdatePositionQuantityAndPrice here — it would double-count
+	//    against OrderSync's own merge (root cause of the v7 NVDA stale-quantity bug).
 	at.recordAndConfirmOrder(order, decision.Symbol, actionStr, addQuantity, marketData.CurrentPrice, existingLeverage, 0)
 
-	// 9. Merge into DB position (weighted avg via existing helper)
-	if at.store != nil {
-		if dbPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, execSymbol, dbSide); err == nil && dbPos != nil {
-			if err := at.store.Position().UpdatePositionQuantityAndPrice(dbPos.ID, addQuantity, marketData.CurrentPrice, 0); err != nil {
-				logger.Infof("  ⚠ Failed to merge add into DB position id=%d: %v", dbPos.ID, err)
-			}
-		} else {
-			logger.Infof("  ⚠ DB position lookup failed for %s/%s: %v (order recorded; quantity merge skipped)",
-				execSymbol, dbSide, err)
-		}
-	}
-
-	// 10. Replace SL/TP — cancel existing standing orders, place new ones for the NEW total qty.
+	// 9. Replace SL/TP — cancel existing standing orders, place new ones for the NEW total qty.
 	//     If AI omitted SL or TP, skip placing that side (leave naked, AI will set on a later cycle).
 	if decision.StopLoss > 0 || decision.TakeProfit > 0 {
 		if err := at.trader.CancelAllOrders(decision.Symbol); err != nil {
