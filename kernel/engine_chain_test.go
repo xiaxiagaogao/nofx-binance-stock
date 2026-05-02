@@ -115,8 +115,9 @@ func TestStep1MacroAlignment_HappyPath(t *testing.T) {
 }`
 	mock := NewMockAIClient().WithResponse(mockResp)
 	ctx := newChainTestContext()
+	engine := newChainTestEngine()
 
-	out, _, err := macroAlignmentCall(ctx, mock)
+	out, _, err := macroAlignmentCall(ctx, mock, engine)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,8 +136,9 @@ func TestStep1MacroAlignment_RejectsInvalidRegime(t *testing.T) {
 	mockResp := `{"market_regime":"bullish","direction_bias":"long_preferred","allowed_sectors":[],"restricted_sectors":[],"session_note":"x","reasoning":"y"}`
 	mock := NewMockAIClient().WithResponse(mockResp)
 	ctx := newChainTestContext()
+	engine := newChainTestEngine()
 
-	_, _, err := macroAlignmentCall(ctx, mock)
+	_, _, err := macroAlignmentCall(ctx, mock, engine)
 	if err == nil {
 		t.Fatal("expected error for invalid regime")
 	}
@@ -149,8 +151,9 @@ func TestStep1MacroAlignment_HandlesMarkdownFences(t *testing.T) {
 	mockResp := "```json\n" + `{"market_regime":"neutral","direction_bias":"balanced","allowed_sectors":[],"restricted_sectors":[],"session_note":"x","reasoning":"y"}` + "\n```"
 	mock := NewMockAIClient().WithResponse(mockResp)
 	ctx := newChainTestContext()
+	engine := newChainTestEngine()
 
-	out, _, err := macroAlignmentCall(ctx, mock)
+	out, _, err := macroAlignmentCall(ctx, mock, engine)
 	if err != nil {
 		t.Fatalf("expected to handle markdown fences; got %v", err)
 	}
@@ -175,8 +178,10 @@ func TestGetFullDecisionChained_WaitShortcut(t *testing.T) {
 	if len(result.Decisions) != 0 {
 		t.Fatalf("expected empty decisions on wait-shortcut; got %d", len(result.Decisions))
 	}
-	if !strings.Contains(result.CoTTrace, "wait-shortcut") {
-		t.Fatalf("expected CoTTrace to mention wait-shortcut; got %s", result.CoTTrace)
+	// v2 (2026-05-02): wait short-circuit was renamed to wait-no-positions when no positions exist,
+	// or chain falls through to Step 4 when positions exist (chain:step4-only marker).
+	if !strings.Contains(result.CoTTrace, "wait-no-positions") && !strings.Contains(result.CoTTrace, "step4-only") {
+		t.Fatalf("expected CoTTrace to mention wait-no-positions or step4-only; got %s", result.CoTTrace)
 	}
 }
 
@@ -282,6 +287,7 @@ func TestStep3Ranking_TruncatesToTopN(t *testing.T) {
 	mockResp := `{"ranked":["NVDAUSDT","QQQUSDT","SPYUSDT"],"top_n":2,"reasoning":"top 2 are best"}`
 	mock := NewMockAIClient().WithResponse(mockResp)
 	ctx := newChainTestContext()
+	engine := newChainTestEngine()
 	candidates := []CandidateCoin{{Symbol: "NVDAUSDT"}, {Symbol: "QQQUSDT"}, {Symbol: "SPYUSDT"}}
 	results := []Step2Result{
 		{Symbol: "NVDAUSDT", Pass: true},
@@ -289,7 +295,7 @@ func TestStep3Ranking_TruncatesToTopN(t *testing.T) {
 		{Symbol: "SPYUSDT", Pass: true},
 	}
 
-	step3, _, err := portfolioRankingCall(ctx, mock, results, candidates, 2)
+	step3, _, err := portfolioRankingCall(ctx, engine, mock, results, candidates, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -305,8 +311,9 @@ func TestStep3Ranking_EnforcesSlotsCap(t *testing.T) {
 	mockResp := `{"ranked":["A","B","C","D"],"top_n":10,"reasoning":"x"}`
 	mock := NewMockAIClient().WithResponse(mockResp)
 	ctx := newChainTestContext()
+	engine := newChainTestEngine()
 
-	step3, _, err := portfolioRankingCall(ctx, mock, nil, nil, 2)
+	step3, _, err := portfolioRankingCall(ctx, engine, mock, nil, nil, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

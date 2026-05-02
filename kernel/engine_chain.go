@@ -33,36 +33,48 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 	cot := strings.Builder{}
 
 	// Step 1: macro alignment
-	step1, step1Raw, err := macroAlignmentCall(ctx, mcpClient)
+	step1, step1Raw, err := macroAlignmentCall(ctx, mcpClient, engine)
 	if err != nil {
 		return chainFallback(ctx, mcpClient, engine, fmt.Sprintf("step1:%v", err))
 	}
 	fmt.Fprintf(&cot, "[step1] regime=%s direction=%s allowed=%v restricted=%v note=%s\n",
 		step1.MarketRegime, step1.DirectionBias, step1.AllowedSectors, step1.RestrictedSectors, step1.SessionNote)
 
-	// Short-circuit: direction_bias=wait → emit empty decisions, no Step 4
+	// v2 (2026-05-02): wait/no-candidate paths must NOT short-circuit when positions exist —
+	// existing positions still need hold/close/add evaluation in Step 4. Only fully short-circuit
+	// when both no candidates AND no positions exist (truly nothing to decide).
+
+	// direction_bias=wait → skip Step 2/3, jump to Step 4 with empty candidates if positions exist
 	if step1.DirectionBias == "wait" {
-		return &FullDecision{
-			Decisions:         []Decision{},
-			CoTTrace:          "[chain:wait-shortcut] " + cot.String(),
-			RawResponse:       step1Raw,
-			Timestamp:         time.Now(),
-			MacroThesisUpdate: step1.MacroThesisUpdate,
-		}, nil
+		if len(ctx.Positions) == 0 {
+			return &FullDecision{
+				Decisions:         []Decision{},
+				CoTTrace:          "[chain:wait-no-positions] " + cot.String(),
+				RawResponse:       step1Raw,
+				Timestamp:         time.Now(),
+				MacroThesisUpdate: step1.MacroThesisUpdate,
+			}, nil
+		}
+		cot.WriteString("[chain:wait-with-positions] skipping Step 2/3, jumping to Step 4 for position evaluation\n")
+		return runStep4Only(ctx, mcpClient, engine, &cot, step1)
 	}
 
 	// Filter candidates by sector
 	filtered := filterBySector(ctx.CandidateCoins, step1.AllowedSectors, step1.RestrictedSectors, engine)
 	fmt.Fprintf(&cot, "[step1-filter] %d → %d candidates\n", len(ctx.CandidateCoins), len(filtered))
 
-	if len(filtered) == 0 && len(ctx.Positions) == 0 {
-		return &FullDecision{
-			Decisions:         []Decision{},
-			CoTTrace:          "[chain:no-candidates-after-step1] " + cot.String(),
-			RawResponse:       step1Raw,
-			Timestamp:         time.Now(),
-			MacroThesisUpdate: step1.MacroThesisUpdate,
-		}, nil
+	if len(filtered) == 0 {
+		if len(ctx.Positions) == 0 {
+			return &FullDecision{
+				Decisions:         []Decision{},
+				CoTTrace:          "[chain:no-candidates-after-step1] " + cot.String(),
+				RawResponse:       step1Raw,
+				Timestamp:         time.Now(),
+				MacroThesisUpdate: step1.MacroThesisUpdate,
+			}, nil
+		}
+		cot.WriteString("[chain:step1-empty-with-positions] jumping to Step 4 for position evaluation\n")
+		return runStep4Only(ctx, mcpClient, engine, &cot, step1)
 	}
 
 	// Step 2: technical screening
@@ -70,6 +82,27 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 	if err != nil {
 		return chainFallback(ctx, mcpClient, engine, fmt.Sprintf("step2:%v", err))
 	}
+
+	// v2: post-process Step 2 results to set IsAddCandidate based on existing positions.
+	// AI is instructed to set this in its output, but we backstop: if a passed candidate
+	// matches an existing position symbol+side, force IsAddCandidate=true so Step 4 cannot
+	// miss the add path.
+	openPositionsBySide := map[string]string{} // "SYMBOL_LONG" / "SYMBOL_SHORT" → "long"/"short"
+	for _, p := range ctx.Positions {
+		key := p.Symbol + "_" + strings.ToUpper(p.Side)
+		openPositionsBySide[key] = strings.ToLower(p.Side)
+	}
+	for i := range step2Results {
+		r := &step2Results[i]
+		if !r.Pass || r.Direction == "" {
+			continue
+		}
+		key := r.Symbol + "_" + strings.ToUpper(r.Direction)
+		if _, exists := openPositionsBySide[key]; exists {
+			r.IsAddCandidate = true
+		}
+	}
+
 	step2Pass := []CandidateCoin{}
 	for _, r := range step2Results {
 		if r.Pass {
@@ -85,23 +118,53 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 	cot.WriteString(formatStep2Detail(step2Results))
 
 	// Deterministic code filter (sector caps, global slot cap, same-symbol dedup)
+	// NOTE: codeFilterCandidates removes existing-symbol candidates (open dedup) — this is
+	// fine for new opens but we WANT add candidates to survive. v2 fix: re-inject add
+	// candidates after the code filter pass.
 	postFilter, slots := codeFilterCandidates(ctx, engine, step2Pass)
-	fmt.Fprintf(&cot, "[code-filter] %d → %d (slots=%d)\n", len(step2Pass), len(postFilter), slots)
+	addCandidates := []CandidateCoin{}
+	for _, r := range step2Results {
+		if r.IsAddCandidate {
+			for _, c := range filtered {
+				if c.Symbol == r.Symbol {
+					addCandidates = append(addCandidates, c)
+					break
+				}
+			}
+		}
+	}
+	if len(addCandidates) > 0 {
+		// merge addCandidates into postFilter without duplication
+		seen := map[string]bool{}
+		for _, c := range postFilter {
+			seen[c.Symbol] = true
+		}
+		for _, c := range addCandidates {
+			if !seen[c.Symbol] {
+				postFilter = append(postFilter, c)
+			}
+		}
+	}
+	fmt.Fprintf(&cot, "[code-filter] %d → %d (slots=%d, add_candidates=%d)\n", len(step2Pass), len(postFilter), slots, len(addCandidates))
 
-	if len(postFilter) == 0 && len(ctx.Positions) == 0 {
-		return &FullDecision{
-			Decisions:         []Decision{},
-			CoTTrace:          "[chain:no-candidates-after-filter] " + cot.String(),
-			RawResponse:       "",
-			Timestamp:         time.Now(),
-			MacroThesisUpdate: step1.MacroThesisUpdate,
-		}, nil
+	if len(postFilter) == 0 {
+		if len(ctx.Positions) == 0 {
+			return &FullDecision{
+				Decisions:         []Decision{},
+				CoTTrace:          "[chain:no-candidates-after-filter] " + cot.String(),
+				RawResponse:       "",
+				Timestamp:         time.Now(),
+				MacroThesisUpdate: step1.MacroThesisUpdate,
+			}, nil
+		}
+		cot.WriteString("[chain:no-candidates-with-positions] jumping to Step 4 for position evaluation\n")
+		return runStep4Only(ctx, mcpClient, engine, &cot, step1)
 	}
 
 	// Step 3: only when over capacity
 	finalCandidates := postFilter
 	if len(postFilter) > slots && slots > 0 {
-		step3, _, err := portfolioRankingCall(ctx, mcpClient, step2Results, postFilter, slots)
+		step3, _, err := portfolioRankingCall(ctx, engine, mcpClient, step2Results, postFilter, slots)
 		if err != nil {
 			return chainFallback(ctx, mcpClient, engine, fmt.Sprintf("step3:%v", err))
 		}
@@ -143,14 +206,15 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 
 // Step2Result is one element of the Step 2 output array.
 type Step2Result struct {
-	Symbol        string   `json:"symbol"`
-	Direction     string   `json:"direction"`
-	Confidence    int      `json:"confidence"`
-	Structure     string   `json:"structure"`
-	KeyEntryLevel *float64 `json:"key_entry_level"`
-	KeyStopLevel  *float64 `json:"key_stop_level"`
-	Pass          bool     `json:"pass"`
-	ReasonIfSkip  string   `json:"reason_if_skip,omitempty"`
+	Symbol         string   `json:"symbol"`
+	Direction      string   `json:"direction"`
+	Confidence     int      `json:"confidence"`
+	Structure      string   `json:"structure"`
+	KeyEntryLevel  *float64 `json:"key_entry_level"`
+	KeyStopLevel   *float64 `json:"key_stop_level"`
+	Pass           bool     `json:"pass"`
+	IsAddCandidate bool     `json:"is_add_candidate,omitempty"` // v2: marks "same-side position already open → use add_long/add_short"
+	ReasonIfSkip   string   `json:"reason_if_skip,omitempty"`
 }
 
 // formatStep2Detail renders per-symbol pass/skip verdicts with structure +
@@ -175,8 +239,12 @@ func formatStep2Detail(results []Step2Result) string {
 			if dir == "" {
 				dir = "-"
 			}
-			fmt.Fprintf(&sb, "  ✓ %s %s conf=%d \"%s\" entry=%s stop=%s\n",
-				r.Symbol, dir, r.Confidence, r.Structure, entry, stop)
+			tag := ""
+			if r.IsAddCandidate {
+				tag = " [add]"
+			}
+			fmt.Fprintf(&sb, "  ✓ %s %s conf=%d%s \"%s\" entry=%s stop=%s\n",
+				r.Symbol, dir, r.Confidence, tag, r.Structure, entry, stop)
 		} else {
 			reason := r.ReasonIfSkip
 			if reason == "" {
@@ -192,7 +260,13 @@ func formatStep2Detail(results []Step2Result) string {
 }
 
 func technicalScreeningCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.AIClient, step1 *Step1Output, candidates []CandidateCoin) ([]Step2Result, string, error) {
-	systemPrompt := PromptStep2TechnicalSystemV1
+	ps := engine.config.PromptSections
+	systemPrompt := renderChainSystemPrompt(
+		PromptStep2TechnicalSystemV2,
+		ps.RoleDefinition,
+		ps.TradingFrequency,
+		ps.EntryStandards,
+	)
 	userPrompt := renderStep2User(ctx, engine, step1, candidates)
 
 	resp, err := mcpClient.CallWithMessages(systemPrompt, userPrompt)
@@ -220,9 +294,15 @@ func technicalScreeningCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.
 
 func renderStep2User(ctx *Context, engine *StrategyEngine, step1 *Step1Output, candidates []CandidateCoin) string {
 	marketData := formatChainMarketData(ctx, engine, candidates)
-	out := PromptStep2TechnicalUserV1
+	keyRisks := "(none)"
+	if ctx.MacroThesis != nil && len(ctx.MacroThesis.KeyRisks) > 0 {
+		keyRisks = "- " + strings.Join(ctx.MacroThesis.KeyRisks, "\n- ")
+	}
+	out := PromptStep2TechnicalUserV2
 	out = strings.ReplaceAll(out, "{{direction_bias}}", step1.DirectionBias)
 	out = strings.ReplaceAll(out, "{{allowed_sectors}}", strings.Join(step1.AllowedSectors, ", "))
+	out = strings.ReplaceAll(out, "{{positions_summary}}", summarizePositions(ctx.Positions))
+	out = strings.ReplaceAll(out, "{{key_risks}}", keyRisks)
 	out = strings.ReplaceAll(out, "{{candidates_market_data}}", marketData)
 	return out
 }
@@ -276,8 +356,13 @@ type Step3Output struct {
 	Reasoning string   `json:"reasoning"`
 }
 
-func portfolioRankingCall(ctx *Context, mcpClient mcp.AIClient, step2Results []Step2Result, candidates []CandidateCoin, slots int) (*Step3Output, string, error) {
-	systemPrompt := PromptStep3RankingSystemV1
+func portfolioRankingCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.AIClient, step2Results []Step2Result, candidates []CandidateCoin, slots int) (*Step3Output, string, error) {
+	ps := engine.config.PromptSections
+	systemPrompt := renderChainSystemPrompt(
+		PromptStep3RankingSystemV2,
+		ps.RoleDefinition,
+		ps.EntryStandards,
+	)
 
 	// Send the technical screening results for the relevant candidates
 	relevantSymbols := map[string]bool{}
@@ -350,8 +435,13 @@ type Step1Output struct {
 	Reasoning         string             `json:"reasoning"`
 }
 
-func macroAlignmentCall(ctx *Context, mcpClient mcp.AIClient) (*Step1Output, string, error) {
-	systemPrompt := PromptStep1MacroSystemV1
+func macroAlignmentCall(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine) (*Step1Output, string, error) {
+	ps := engine.config.PromptSections
+	systemPrompt := renderChainSystemPrompt(
+		PromptStep1MacroSystemV2,
+		ps.RoleDefinition,
+		ps.TradingFrequency,
+	)
 	userPrompt := renderStep1User(ctx)
 
 	resp, err := mcpClient.CallWithMessages(systemPrompt, userPrompt)
@@ -518,6 +608,30 @@ func filterBySector(candidates []CandidateCoin, allowed, restricted []string, en
 	return out
 }
 
+// renderChainSystemPrompt assembles a chain step's system prompt by prepending
+// the user's prompt_sections (basket of customizable Chinese fund-manager content
+// stored in DB strategy.prompt_sections) before the step-specific skeleton.
+//
+// Sections are appended in the order given, separated by horizontal rules so
+// each chunk is visually distinct in the rendered prompt. Empty sections are
+// skipped. The skeleton (V2 template containing only step-specific schema/task
+// instructions) goes last.
+//
+// This is the v2 chain mechanism (2026-05-02 refactor) — without injection,
+// chain runs in a parallel prompt universe that ignores user customizations.
+func renderChainSystemPrompt(skeleton string, sections ...string) string {
+	var sb strings.Builder
+	for _, s := range sections {
+		if strings.TrimSpace(s) == "" {
+			continue
+		}
+		sb.WriteString(s)
+		sb.WriteString("\n\n---\n\n")
+	}
+	sb.WriteString(skeleton)
+	return sb.String()
+}
+
 // chainFallback runs the existing single-call path and tags CoTTrace so post-
 // hoc analysis can distinguish degraded runs from intentional single-call runs.
 func chainFallback(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, reason string) (*FullDecision, error) {
@@ -529,13 +643,37 @@ func chainFallback(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine,
 	return dec, err
 }
 
+// runStep4Only invokes only Step 4 with empty candidates. Used in v2 (2026-05-02
+// refactor) when Step 1 says wait or Step 1/2 produce zero candidates BUT existing
+// positions still need evaluation (hold/close/add). This prevents the "chain断流"
+// bug where wait responses skipped position management entirely.
+func runStep4Only(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, cot *strings.Builder, step1 *Step1Output) (*FullDecision, error) {
+	step4, err := decisionGenerationCall(ctx, engine, mcpClient, []CandidateCoin{})
+	if err != nil {
+		return chainFallback(ctx, mcpClient, engine, fmt.Sprintf("step4-only:%v", err))
+	}
+	if step1 != nil && step1.MacroThesisUpdate != nil {
+		step4.MacroThesisUpdate = step1.MacroThesisUpdate
+	}
+	step4.CoTTrace = "[chain:step4-only] " + cot.String() + step4.CoTTrace
+	return step4, nil
+}
+
 // decisionGenerationCall is Step 4 of the chain. Receives a curated candidate
 // list (from Steps 1-3 in later commits) and emits []Decision via the existing
 // parseFullDecisionResponse so DB serialization stays identical.
 func decisionGenerationCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.AIClient, candidates []CandidateCoin) (*FullDecision, error) {
 	riskCfg := engine.GetRiskControlConfig()
+	ps := engine.config.PromptSections
 
-	systemPrompt := renderStep4System(riskCfg.EffectiveMaxLeverage())
+	skeleton := strings.ReplaceAll(PromptStep4DecisionSystemV2, "{{max_leverage}}", fmt.Sprintf("%d", riskCfg.EffectiveMaxLeverage()))
+	systemPrompt := renderChainSystemPrompt(
+		skeleton,
+		ps.RoleDefinition,
+		ps.TradingFrequency,
+		ps.EntryStandards,
+		ps.DecisionProcess,
+	)
 	userPrompt, err := renderStep4User(ctx, engine, candidates)
 	if err != nil {
 		return nil, fmt.Errorf("render step4 prompt: %w", err)
@@ -567,14 +705,16 @@ func decisionGenerationCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.
 	return decision, nil
 }
 
-func renderStep4System(maxLeverage int) string {
-	return strings.ReplaceAll(PromptStep4DecisionSystemV1, "{{max_leverage}}", fmt.Sprintf("%d", maxLeverage))
-}
-
 func renderStep4User(ctx *Context, engine *StrategyEngine, candidates []CandidateCoin) (string, error) {
-	candidatesJSON, err := json.MarshalIndent(candidates, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("marshal candidates: %w", err)
+	var candidatesText string
+	if len(candidates) == 0 {
+		candidatesText = "[]  // 本周期 Step 1-3 未筛出新机会"
+	} else {
+		b, err := json.MarshalIndent(candidates, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("marshal candidates: %w", err)
+		}
+		candidatesText = string(b)
 	}
 
 	riskCfg := engine.GetRiskControlConfig()
@@ -583,8 +723,8 @@ func renderStep4User(ctx *Context, engine *StrategyEngine, candidates []Candidat
 		availableSlots = 0
 	}
 
-	out := PromptStep4DecisionUserV1
-	out = strings.ReplaceAll(out, "{{candidates_json}}", string(candidatesJSON))
+	out := PromptStep4DecisionUserV2
+	out = strings.ReplaceAll(out, "{{candidates_json}}", candidatesText)
 	out = strings.ReplaceAll(out, "{{positions_summary}}", summarizePositions(ctx.Positions))
 	out = strings.ReplaceAll(out, "{{equity}}", fmt.Sprintf("%.2f", ctx.Account.TotalEquity))
 	out = strings.ReplaceAll(out, "{{margin_pct}}", fmt.Sprintf("%.1f", ctx.Account.MarginUsedPct))
@@ -592,8 +732,29 @@ func renderStep4User(ctx *Context, engine *StrategyEngine, candidates []Candidat
 	out = strings.ReplaceAll(out, "{{max_leverage}}", fmt.Sprintf("%d", riskCfg.EffectiveMaxLeverage()))
 	out = strings.ReplaceAll(out, "{{min_position_size}}", fmt.Sprintf("%.2f", riskCfg.MinPositionSize))
 	out = strings.ReplaceAll(out, "{{max_pos_ratio}}", fmt.Sprintf("%.2f", riskCfg.EffectiveMaxPositionValueRatio()))
-	out = strings.ReplaceAll(out, "{{market_data}}", formatChainMarketData(ctx, engine, candidates))
+	out = strings.ReplaceAll(out, "{{candidates_market_data}}", formatChainMarketData(ctx, engine, candidates))
+	out = strings.ReplaceAll(out, "{{positions_market_data}}", formatChainPositionsMarketData(ctx, engine))
 	return out, nil
+}
+
+// formatChainPositionsMarketData renders full per-symbol market data for every
+// OPEN position. Used by Step 4 to give the AI rich context for hold/close/add
+// decisions on existing positions (vs. just a one-line summary). Reuses the
+// same engine.formatMarketData() helper that single-prompt path uses.
+func formatChainPositionsMarketData(ctx *Context, engine *StrategyEngine) string {
+	if len(ctx.Positions) == 0 {
+		return "(none)"
+	}
+	var sb strings.Builder
+	for _, p := range ctx.Positions {
+		md, ok := ctx.MarketDataMap[p.Symbol]
+		if !ok || md == nil {
+			fmt.Fprintf(&sb, "\n=== %s === (no market data, only summary above)\n", p.Symbol)
+			continue
+		}
+		sb.WriteString(engine.formatMarketData(md))
+	}
+	return sb.String()
 }
 
 func summarizePositions(positions []PositionInfo) string {
