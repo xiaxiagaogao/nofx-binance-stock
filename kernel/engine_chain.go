@@ -43,9 +43,20 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 	// v2 (2026-05-02): wait/no-candidate paths must NOT short-circuit when positions exist —
 	// existing positions still need hold/close/add evaluation in Step 4. Only fully short-circuit
 	// when both no candidates AND no positions exist (truly nothing to decide).
+	//
+	// v2.1 (2026-05-02 evening): Step 1 wait is a session-level judgment that doesn't see
+	// per-symbol price action. detectGapCandidates() does a code-side scan for individual
+	// symbols with significant moves (price/volume/RSI extreme). If found, we OVERRIDE the
+	// wait directive and run the full Step 2-4 pipeline on those symbols. This fixes the
+	// blind spot where 关盘 gap moves (e.g. NVDA -8% on news at 02:00 BJT) would be missed.
+	gapCandidates := []CandidateCoin{}
+	if step1.DirectionBias == "wait" {
+		gapCandidates = detectGapCandidates(ctx)
+	}
 
 	// direction_bias=wait → skip Step 2/3, jump to Step 4 with empty candidates if positions exist
-	if step1.DirectionBias == "wait" {
+	// UNLESS gap candidates exist, in which case override and run full pipeline.
+	if step1.DirectionBias == "wait" && len(gapCandidates) == 0 {
 		if len(ctx.Positions) == 0 {
 			return &FullDecision{
 				Decisions:         []Decision{},
@@ -59,9 +70,21 @@ func GetFullDecisionChained(ctx *Context, mcpClient mcp.AIClient, engine *Strate
 		return runStep4Only(ctx, mcpClient, engine, &cot, step1)
 	}
 
-	// Filter candidates by sector
-	filtered := filterBySector(ctx.CandidateCoins, step1.AllowedSectors, step1.RestrictedSectors, engine)
-	fmt.Fprintf(&cot, "[step1-filter] %d → %d candidates\n", len(ctx.CandidateCoins), len(filtered))
+	// Filter candidates by sector. When wait is overridden by gappers, use only the
+	// gappers as input (we already detected price action there); skip sector filter
+	// since gap symbols often signal real opportunities regardless of sector_bias.
+	var filtered []CandidateCoin
+	if step1.DirectionBias == "wait" && len(gapCandidates) > 0 {
+		gapSyms := make([]string, len(gapCandidates))
+		for i, c := range gapCandidates {
+			gapSyms[i] = c.Symbol
+		}
+		fmt.Fprintf(&cot, "[chain:wait-overridden-by-gappers] %d 标的价格异动: %s\n", len(gapCandidates), strings.Join(gapSyms, ", "))
+		filtered = gapCandidates
+	} else {
+		filtered = filterBySector(ctx.CandidateCoins, step1.AllowedSectors, step1.RestrictedSectors, engine)
+		fmt.Fprintf(&cot, "[step1-filter] %d → %d candidates\n", len(ctx.CandidateCoins), len(filtered))
+	}
 
 	if len(filtered) == 0 {
 		if len(ctx.Positions) == 0 {
@@ -641,6 +664,50 @@ func chainFallback(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine,
 		dec.CoTTrace = fmt.Sprintf("[chain-degraded:%s] %s", reason, dec.CoTTrace)
 	}
 	return dec, err
+}
+
+// detectGapCandidates scans candidate symbols for price/volume/RSI extremes that
+// warrant evaluation even when Step 1 says wait. Used to override the wait
+// short-circuit during 关盘/盘前 sessions when an individual symbol gaps on
+// news/sentiment that Step 1 (which only sees macro + session, not per-symbol
+// price action) cannot judge from its inputs.
+//
+// Triggers (any one):
+//   - |1H 价格变化| > 3% (intraday acceleration)
+//   - |4H 价格变化| > 5% (multi-hour gap)
+//   - 1H RSI7 < 25 (deeply oversold mean-reversion candidate)
+//   - 1H RSI7 > 75 (overbought reversal candidate)
+//   - 1H 成交量 > 4H 均量 × 2 (volume spike — usually news driven)
+//
+// Returns the subset of candidates that meet ANY trigger. If empty, the wait
+// short-circuit proceeds normally.
+func detectGapCandidates(ctx *Context) []CandidateCoin {
+	var out []CandidateCoin
+	for _, c := range ctx.CandidateCoins {
+		md, ok := ctx.MarketDataMap[c.Symbol]
+		if !ok || md == nil {
+			continue
+		}
+		gapped := false
+		switch {
+		case md.PriceChange1h > 3 || md.PriceChange1h < -3:
+			gapped = true
+		case md.PriceChange4h > 5 || md.PriceChange4h < -5:
+			gapped = true
+		case md.CurrentRSI7 > 0 && md.CurrentRSI7 < 25:
+			gapped = true
+		case md.CurrentRSI7 > 75:
+			gapped = true
+		case md.LongerTermContext != nil &&
+			md.LongerTermContext.AverageVolume > 0 &&
+			md.LongerTermContext.CurrentVolume > md.LongerTermContext.AverageVolume*2:
+			gapped = true
+		}
+		if gapped {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // runStep4Only invokes only Step 4 with empty candidates. Used in v2 (2026-05-02
