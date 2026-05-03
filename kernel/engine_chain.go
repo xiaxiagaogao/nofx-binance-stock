@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"nofx/logger"
+	"nofx/market"
 	"nofx/mcp"
 )
 
@@ -303,13 +304,24 @@ func technicalScreeningCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.
 		return nil, resp, fmt.Errorf("step2 parse: %w (raw: %s)", err, truncateString(resp, 200))
 	}
 
+	// v9.1 (2026-05-03): AI sometimes returns short ticker forms (e.g. "CL" for crude
+	// oil, "META" instead of "METAUSDT") even though prompt shows full Binance symbols.
+	// Normalize through market.NormalizeForExchange before validation. Handles short
+	// forms (CL→CLUSDT), xyz:* legacy forms (xyz:META→METAUSDT), and pass-throughs
+	// (METAUSDT→METAUSDT). Without this, a single mismatched symbol crashes the chain
+	// to single-prompt fallback (cost ~5x).
 	knownSymbols := map[string]bool{}
 	for _, c := range candidates {
 		knownSymbols[c.Symbol] = true
 	}
-	for i, r := range results {
-		if !knownSymbols[r.Symbol] {
-			return nil, resp, fmt.Errorf("step2 unknown symbol at idx %d: %s", i, r.Symbol)
+	for i := range results {
+		normalized := market.NormalizeForExchange(results[i].Symbol, "binance")
+		if normalized != results[i].Symbol {
+			logger.Infof("  [step2] normalized symbol %q → %q", results[i].Symbol, normalized)
+			results[i].Symbol = normalized
+		}
+		if !knownSymbols[results[i].Symbol] {
+			return nil, resp, fmt.Errorf("step2 unknown symbol at idx %d: %s (after normalize)", i, results[i].Symbol)
 		}
 	}
 	return results, resp, nil
@@ -419,6 +431,12 @@ func portfolioRankingCall(ctx *Context, engine *StrategyEngine, mcpClient mcp.AI
 	}
 	if out.TopN < 0 {
 		out.TopN = 0
+	}
+	// v9.1 (2026-05-03): defensive symbol normalize — same reason as Step 2.
+	// If AI returns "META" instead of "METAUSDT" here, the downstream rankedSet
+	// match would silently drop the candidate (no error, but lost opportunity).
+	for i := range out.Ranked {
+		out.Ranked[i] = market.NormalizeForExchange(out.Ranked[i], "binance")
 	}
 	return &out, resp, nil
 }

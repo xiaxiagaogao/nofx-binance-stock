@@ -245,6 +245,36 @@ func TestStep2TechnicalScreening_HappyPath(t *testing.T) {
 	}
 }
 
+func TestStep2TechnicalScreening_NormalizesShortSymbols(t *testing.T) {
+	// AI returns short forms ("CL", "META") and xyz: forms — Step 2 should normalize
+	// to canonical Binance symbols and accept them. Without this, chain falls back
+	// to single-prompt unnecessarily (cost ~5x). Real failure observed cycle 666 (2026-05-03).
+	mockResp := `[
+  {"symbol":"CL","direction":"long","confidence":70,"structure":"x","pass":true},
+  {"symbol":"META","direction":"long","confidence":75,"structure":"y","pass":true},
+  {"symbol":"xyz:NVDA","direction":"long","confidence":80,"structure":"z","pass":true}
+]`
+	mock := NewMockAIClient().WithResponse(mockResp)
+	ctx := newChainTestContext()
+	ctx.CandidateCoins = []CandidateCoin{{Symbol: "CLUSDT"}, {Symbol: "METAUSDT"}, {Symbol: "NVDAUSDT"}}
+	engine := newChainTestEngine()
+	step1 := &Step1Output{DirectionBias: "long_preferred", AllowedSectors: []string{"semiconductor", "tech_mega", "energy"}}
+
+	results, _, err := technicalScreeningCall(ctx, engine, mock, step1, ctx.CandidateCoins)
+	if err != nil {
+		t.Fatalf("expected normalization to accept short forms; got error: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results; got %d", len(results))
+	}
+	expected := map[string]bool{"CLUSDT": true, "METAUSDT": true, "NVDAUSDT": true}
+	for _, r := range results {
+		if !expected[r.Symbol] {
+			t.Fatalf("expected normalized symbol in canonical form; got %q", r.Symbol)
+		}
+	}
+}
+
 func TestStep2TechnicalScreening_RejectsUnknownSymbol(t *testing.T) {
 	mockResp := `[{"symbol":"DOGEUSDT","pass":false}]`
 	mock := NewMockAIClient().WithResponse(mockResp)
